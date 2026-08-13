@@ -1,0 +1,100 @@
+/**
+ * LoLLife - 主題與調色系統 (Themes & Design Tokens)
+ * 參照 YakyoLife 四大主題架構，打造電競轉播與復古電子風格
+ */
+
+/* Theme A: 預設 - 深藍電競轉播記分板 (LCP / Broadcast HUD) */
+body {
+  --bg: #070a0f;
+  --panel: #0d1420;
+  --panel2: #141f30;
+  --edge: #23354d;
+  --text: #e8f0f8;
+  --dim: #7f95ad;
+  --accent: #00f2fe;
+  --good: #4facfe;
+  --bad: #ff4d4f;
+  --info: #00f2fe;
+  --gold: #f5a623;
+  --r: 8px;
+  --sans: 'Noto Sans TC', -apple-system, sans-serif;
+  --head: 'Noto Sans TC', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --disp: 'IBM Plex Mono', monospace;
+  --glow: 0 0 10px rgba(0, 242, 254, 0.4);
+  --btnbg: linear-gradient(#1a334d, #102133);
+  --btnedge: #00f2fe;
+  --btntx: #e8f0f8;
+  --bgfx: radial-gradient(ellipse 120% 60% at 50% -10%, rgba(0, 242, 254, 0.08) 0%, transparent 60%);
+  --shadow: rgba(0, 0, 0, 0.45);
+}
+
+/* Theme B: 電子看板 (8-bit Retro Arcade) */
+body[data-theme='b'] {
+  --bg: #06080c;
+  --panel: #0b1017;
+  --panel2: #111822;
+  --edge: #1f2b3a;
+  --text: #d8e2ed;
+  --dim: #5c6f85;
+  --accent: #ffb32e;
+  --good: #49b675;
+  --bad: #ff4d4f;
+  --info: #3a7bd5;
+  --gold: #ffb32e;
+  --r: 4px;
+  --head: 'DotGothic16', monospace;
+  --disp: 'DotGothic16', monospace;
+  --glow: 0 0 10px rgba(255, 179, 46, 0.6);
+  --btnbg: #141f2e;
+  --btnedge: #ffb32e;
+  --btntx: #d8e2ed;
+  --bgfx: none;
+  --shadow: rgba(0, 0, 0, 0.55);
+}
+
+/* Theme C: 報紙版面 (Editorial Newspaper) */
+body[data-theme='c'] {
+  --bg: #f4efe1;
+  --panel: #faf6ea;
+  --panel2: #ece5d2;
+  --edge: #1e1c18;
+  --text: #1e1c18;
+  --dim: #6f6857;
+  --accent: #b3402f;
+  --good: #2f6b3a;
+  --bad: #b3402f;
+  --info: #35506b;
+  --gold: #b3402f;
+  --r: 0px;
+  --head: 'Noto Serif TC', serif;
+  --disp: 'Noto Serif TC', serif;
+  --glow: none;
+  --btnbg: #1e1c18;
+  --btnedge: #1e1c18;
+  --btntx: #f4efe1;
+  --bgfx: none;
+  --shadow: rgba(30, 28, 24, 0.12);
+}
+
+/* Theme D: 現代數據庫 (Clean Modern Analytics) */
+body[data-theme='d'] {
+  --bg: #f5f7fa;
+  --panel: #ffffff;
+  --panel2: #edf1f7;
+  --edge: #d8e0eb;
+  --text: #182230;
+  --dim: #6e7d91;
+  --accent: #0070f3;
+  --good: #10b981;
+  --bad: #ef4444;
+  --info: #0070f3;
+  --gold: #d97706;
+  --r: 10px;
+  --glow: none;
+  --btnbg: #0070f3;
+  --btnedge: #0070f3;
+  --btntx: #ffffff;
+  --bgfx: none;
+  --shadow: rgba(24, 34, 48, 0.08);
+}
