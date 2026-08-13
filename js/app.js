@@ -1,15 +1,20 @@
 /**
  * LoLLife - 遊戲核心控制器 (App Controller)
- * 參照 YakyoLife 的極致流暢設計模式：記分板、卡片流、擲骰加點、BP選角、賽事決策與生涯年表
+ * 完整實作 1~5 階段：
+ * 1. 互動式 BP 選角與 7 階段戰術決策對決
+ * 2. 英雄池 7 級熟練度與自主特訓
+ * 3. 40+ 寫實事件卡與 19 種特質自動解鎖
+ * 4. 轉會市場、合約談判與 LCK/LPL 旅外挑戰
+ * 5. 名人堂退役結算與 Canvas 高清圖片下載按鈕
  */
 
 import { RNG } from './rng.js';
-import { CHAMPIONS, getChampionById } from '../data/champions.js';
+import { CHAMPIONS, getChampionById, getMasteryInfo } from '../data/champions.js';
 import { TEAMS, getTeamById, REGIONS } from '../data/teams.js';
 import { SPLITS, INTERNATIONAL_TOURNAMENTS } from '../data/leagues.js';
 import { EVENTS, getRandomEvent } from '../data/events.js';
 import { TRAITS, getTraitById } from '../data/traits.js';
-import { generateSplitMeta } from '../data/meta.js';
+import { generateSplitMeta, calculateChampionMetaBonus } from '../data/meta.js';
 import { HOF_TIERS, RetirementManager } from './retirement.js';
 
 // ==================== 全域狀態與種子初始化 ====================
@@ -33,11 +38,11 @@ const ABL = {
 };
 
 const POS_NAMES = {
-  TOP: '上路',
-  JUG: '打野',
-  MID: '中路',
-  ADC: '下路',
-  SUP: '輔助',
+  TOP: '上路 (TOP)',
+  JUG: '打野 (JUG)',
+  MID: '中路 (MID)',
+  ADC: '下路 (ADC)',
+  SUP: '輔助 (SUP)',
 };
 
 const ROLE_WEIGHTS = {
@@ -51,12 +56,12 @@ const ROLE_WEIGHTS = {
 // ==================== 選手狀態構建 ====================
 function newPlayerState(name, inGameId, pos) {
   const ab = {
-    mechanics: rng.range(42, 58),
-    laning: rng.range(40, 56),
-    macro: rng.range(38, 52),
-    teamfight: rng.range(40, 55),
-    championPool: rng.range(40, 54),
-    mental: rng.range(42, 56),
+    mechanics: rng.range(44, 58),
+    laning: rng.range(42, 56),
+    macro: rng.range(40, 52),
+    teamfight: rng.range(42, 56),
+    championPool: rng.range(42, 54),
+    mental: rng.range(44, 56),
     communication: rng.range(40, 54),
     discipline: rng.range(45, 62),
   };
@@ -65,16 +70,30 @@ function newPlayerState(name, inGameId, pos) {
   else if (pos === 'JUG' || pos === 'SUP') { ab.macro += 6; ab.communication += 5; }
   else if (pos === 'TOP') { ab.laning += 6; ab.mechanics += 4; }
 
-  // 潛力上限 (62~82)
+  // 潛力上限 (64~84)
   const pot = {};
   Object.keys(ab).forEach(k => {
-    pot[k] = Math.min(85, ab[k] + rng.range(14, 28));
+    pot[k] = Math.min(85, ab[k] + rng.range(16, 28));
   });
+
+  // 初始英雄池 (1~2 招牌, 4~6 熟練)
+  const masteries = {};
+  const roleChamps = CHAMPIONS.filter(c => c.primaryRole === pos || c.roles.includes(pos));
+  const shuffled = [...roleChamps].sort(() => rng.next() - 0.5);
+  
+  // 招牌英雄 (120~150 點)
+  if (shuffled[0]) masteries[shuffled[0].id] = rng.range(125, 150);
+  if (shuffled[1]) masteries[shuffled[1].id] = rng.range(120, 140);
+  // 熟練英雄 (75~100 點)
+  for (let i = 2; i < 6 && i < shuffled.length; i++) {
+    masteries[shuffled[i].id] = rng.range(75, 95);
+  }
 
   return {
     name,
     inGameId,
     pos,
+    seed: SEED,
     age: 16,
     year: 2026,
     stage: 'AMATEUR', // 'AMATEUR' -> 'PRO' -> 'RETIRED'
@@ -87,7 +106,8 @@ function newPlayerState(name, inGameId, pos) {
     ab,
     pot,
     carry: {}, // 未滿一級的經驗槽
-    masteries: {}, // { [champId]: points }
+    masteries,
+    signatureChamps: [shuffled[0]?.id, shuffled[1]?.id].filter(Boolean),
     traits: {},
     removed: [],
     wristHealth: 100,
@@ -142,6 +162,14 @@ function addAb(k, v) {
   return cur - o;
 }
 
+function abCost(k) {
+  if (!S) return 1;
+  const cur = S.ab[k], pk = S.pot[k] || 75;
+  let c = cur >= 70 ? 4 : cur >= 60 ? 2 : 1;
+  if (cur >= pk) c *= 3;
+  return c;
+}
+
 // ==================== UI 基礎與卡片流 ====================
 const $ = id => document.getElementById(id);
 function logTarget() { return _curYearBody || $('log'); }
@@ -157,6 +185,7 @@ function card(cls, title, html) {
   d.innerHTML = (title ? `<h4>${title}</h4>` : '') + html;
   logTarget().appendChild(d);
   renderTraits();
+  checkTraitsAutoUnlock();
   scrollBottom();
 }
 
@@ -236,15 +265,7 @@ function choose(title, opts) {
   scrollBottom();
 }
 
-function abCost(k) {
-  if (!S) return 1;
-  const cur = S.ab[k], pk = S.pot[k] || 75;
-  let c = cur >= 70 ? 4 : cur >= 60 ? 2 : 1;
-  if (cur >= pk) c *= 3;
-  return c;
-}
-
-// ==================== 骰子與加點系統 ====================
+// ==================== 骰子與加點系統 (支援退回與依序消耗) ====================
 function rollDice(count = 4, label = '季前特訓加點', onComplete) {
   const act = $('act');
   act.style.display = 'block';
@@ -312,7 +333,7 @@ function rollDice(count = 4, label = '季前特訓加點', onComplete) {
       </div>
     `;
 
-    // 點擊能力列直接挹注當前第一顆骰子
+    // 點擊能力直接注入整顆骰子
     act.querySelectorAll('.abrow').forEach(row => {
       row.onclick = () => {
         if (remaining() <= 0) return;
@@ -330,7 +351,7 @@ function rollDice(count = 4, label = '季前特訓加點', onComplete) {
       };
     });
 
-    // 退回功能
+    // 退回
     const btnUndo = $('btn-undo-alloc');
     if (btnUndo && hist.length > 0) {
       btnUndo.onclick = () => {
@@ -343,7 +364,7 @@ function rollDice(count = 4, label = '季前特訓加點', onComplete) {
       };
     }
 
-    // 完成按鈕
+    // 完成
     const btnFinish = $('btn-finish-alloc');
     if (btnFinish) {
       btnFinish.onclick = () => {
@@ -355,7 +376,6 @@ function rollDice(count = 4, label = '季前特訓加點', onComplete) {
 
   renderAlloc();
 
-  // 初始擲骰滾動動畫
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const diceEls = act.querySelectorAll('#dice .die');
     diceEls.forEach((el, i) => {
@@ -371,7 +391,7 @@ function rollDice(count = 4, label = '季前特訓加點', onComplete) {
   }
 }
 
-// ==================== 特質側欄渲染 ====================
+// ==================== 特質側欄與自動解鎖 ====================
 function renderTraits() {
   const el = $('trait-tags');
   if (!el || !S) return;
@@ -393,6 +413,16 @@ function unlockTrait(tId) {
   const t = getTraitById(tId);
   card('gold', `隱藏特質解鎖：${t ? t.name : tId}`, t ? t.desc : '');
   board();
+}
+
+function checkTraitsAutoUnlock() {
+  if (!S) return;
+  if (!S.traits.LADDER_MONSTER && S.ab.mechanics >= 72 && S.ab.laning >= 70) unlockTrait('LADDER_MONSTER');
+  if (!S.traits.BIG_STAGE_HERO && (S.stats.worldsTitles >= 1 || S.stats.intlTitles >= 2)) unlockTrait('BIG_STAGE_HERO');
+  if (!S.traits.CHAMPION_OCEAN && S.ab.championPool >= 72) unlockTrait('CHAMPION_OCEAN');
+  if (!S.traits.IRON_MAN && S.age >= 23 && S.ab.discipline >= 70 && S.wristHealth >= 85) unlockTrait('IRON_MAN');
+  if (!S.traits.STREAMER_MINDSET && S.popularity >= 80) unlockTrait('STREAMER_MINDSET');
+  if (!S.traits.GLASS_WRIST && S.wristHealth <= 35) unlockTrait('GLASS_WRIST');
 }
 
 // ==================== 生涯時間軸 ====================
@@ -422,13 +452,253 @@ function renderTimeline() {
   }
 }
 
-// ==================== 遊戲核心流程循環 ====================
+// ==================== 1. BP 選角與 7 階段實時賽況對決 ====================
+function interactiveBPDraft(oppTeam, onDraftFinished) {
+  const act = $('act');
+  act.style.display = 'block';
+
+  // 取得玩家位置可選英雄
+  const roleChamps = CHAMPIONS.filter(c => c.primaryRole === S.pos || c.roles.includes(S.pos));
+  const offMetaChamps = CHAMPIONS.filter(c => c.primaryRole !== S.pos && !c.roles.includes(S.pos)).slice(0, 8);
+  const candidates = [...roleChamps, ...offMetaChamps];
+
+  let chosenChampId = roleChamps[0]?.id || CHAMPIONS[0].id;
+
+  const renderBPScreen = () => {
+    const champObj = getChampionById(chosenChampId);
+    const masteryPts = S.masteries[chosenChampId] || 0;
+    const masteryInfo = getMasteryInfo(masteryPts);
+    const isOffMeta = champObj.primaryRole !== S.pos && !champObj.roles.includes(S.pos);
+
+    let advice = '【常規戰力】教練點頭認可，發揮基準強度。';
+    if (isOffMeta) {
+      advice = `【⚠️ 非主流黑科技警告】教練皺起眉頭：「${champObj.name} 打 ${S.pos} 缺乏傳統前排或控制，若對線劣勢容錯極低！」`;
+    } else if (masteryInfo.level >= 5) {
+      advice = `【🔥 招牌絕活】教練全力支持：「鎖下你的招牌 ${champObj.name}，打出極限上限！」`;
+    }
+
+    act.innerHTML = `
+      <div class="title">⚔️ 召喚峽谷 BP 選角階段 (對手：${oppTeam.name})</div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:6px;">請為本局系列賽鎖定出戰英雄（支援非主流奇招）：</div>
+      
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(95px,1fr));gap:6px;max-height:160px;overflow-y:auto;background:var(--panel2);padding:8px;border-radius:var(--r);margin-bottom:8px;">
+        ${candidates.map(c => {
+          const pts = S.masteries[c.id] || 0;
+          const mi = getMasteryInfo(pts);
+          const sel = c.id === chosenChampId;
+          const off = c.primaryRole !== S.pos && !c.roles.includes(S.pos);
+          return `
+            <div class="bp-champ-btn" data-id="${c.id}" style="border:1px solid ${sel ? 'var(--accent)' : 'var(--edge)'};background:${sel ? 'rgba(0,242,254,0.12)' : 'var(--panel)'};padding:6px;border-radius:4px;cursor:pointer;text-align:center;">
+              <div style="font-size:12px;font-weight:700;color:${sel ? 'var(--accent)' : 'var(--text)'};">${c.name}</div>
+              <div style="font-size:9.5px;color:${off ? 'var(--gold)' : 'var(--dim)'};">${off ? '非主流' : mi.name}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div style="font-size:12px;background:rgba(0,0,0,0.3);padding:8px 10px;border-radius:var(--r);border-left:3px solid ${isOffMeta ? 'var(--gold)' : 'var(--accent)'};margin-bottom:10px;">
+        <strong>當前選擇：${champObj.name} (${champObj.title})</strong> · 熟練度：${masteryInfo.name} (${masteryPts}點)<br>
+        <span style="color:var(--dim);">${advice}</span>
+      </div>
+
+      <button class="btn main" id="btn-lock-pick" style="text-align:center;">🔒 鎖定英雄，進入比賽決策 ▸</button>
+    `;
+
+    act.querySelectorAll('.bp-champ-btn').forEach(btn => {
+      btn.onclick = () => {
+        chosenChampId = btn.getAttribute('data-id');
+        renderBPScreen();
+      };
+    });
+
+    $('btn-lock-pick').onclick = () => {
+      act.style.display = 'none';
+      run7PhaseMatch(oppTeam, chosenChampId, onDraftFinished);
+    };
+  };
+
+  renderBPScreen();
+}
+
+// 7 階段戰術決策推進
+function run7PhaseMatch(oppTeam, chosenChampId, onMatchDone) {
+  const champ = getChampionById(chosenChampId);
+  const masteryPts = S.masteries[chosenChampId] || 0;
+  const mastery = getMasteryInfo(masteryPts);
+  const isOffMeta = champ.primaryRole !== S.pos && !champ.roles.includes(S.pos);
+
+  // 記錄使用英雄
+  S.stats.champsUsed[chosenChampId] = (S.stats.champsUsed[chosenChampId] || 0) + 1;
+  S.masteries[chosenChampId] = (S.masteries[chosenChampId] || 0) + 10;
+
+  card('info', `⚔️ 系列賽開打 · 鎖定 ${champ.name}`, `你鎖定了 <b class="hl">${champ.name}</b> (${mastery.name})${isOffMeta ? ' 祭出非主流黑科技套路！' : ''}，全場焦點凝聚於召喚峽谷！`);
+
+  let currentPhase = 1;
+  let goldDiff = 0;
+  let kills = 0, deaths = 0, assists = 0;
+
+  function runNextPhase() {
+    if (currentPhase > 7 || Math.abs(goldDiff) >= 8000) {
+      // 比賽結束結算
+      const won = goldDiff >= 0;
+      S.stats.matchesPlayed += 1;
+      if (won) S.stats.matchesWon += 1;
+
+      kills += rng.range(2, 6);
+      deaths += rng.range(1, 3);
+      assists += rng.range(4, 9);
+      S.stats.kills += kills;
+      S.stats.deaths += deaths;
+      S.stats.assists += assists;
+
+      const isPog = won && (kills >= 6 || assists >= 10 || ovr() >= 68);
+      if (isPog) S.stats.pogCount += 1;
+
+      card(won ? 'gold' : 'bad', won ? '🏆 VICTORY 勝利！' : '💀 DEFEAT 戰敗', `
+        面對 <b class="hl">${oppTeam.name}</b>，全隊以 <b class="${won ? 'up' : 'dn'}">${won ? '2:0 拿下系列賽' : '1:2 遺憾告負'}</b>！<br>
+        個人本局數據：<b class="hl">${kills} 殺 / ${deaths} 死 / ${assists} 助攻</b>${isPog ? ' · 榮獲單場 MVP (POG)！🔥' : ''}
+      `);
+
+      onMatchDone(won);
+      return;
+    }
+
+    const phases = [
+      null,
+      {
+        name: '階段 1 (0:00~1:30) 一級團與野區布防',
+        choices: [
+          { t: '五人集結入侵對方野區 (一級團)', s: '高風險高報酬', risk: 0.5, successTxt: '【一級團大勝】你的精準進場逼出敵方雙閃並斬獲一血！', failTxt: '遭敵方防守埋伏，交出閃現仍送出一血。' },
+          { t: '五點防守，做好常規眼位', s: '穩健開局', risk: 0.8, successTxt: '防守視野滴水不漏，野區平穩開局。', failTxt: '視野被敵方排掉，打野路線暴露。' },
+        ]
+      },
+      {
+        name: '階段 2 (1:30~5:00) 首輪對線與打野動向',
+        choices: [
+          { t: '搶二/搶三主動發難換血單殺', s: '極限操作對決', risk: 0.55, successTxt: '【極限單殺！】你抓準走位破綻單殺對手，引爆全場！', failTxt: '換血過於激進，遭敵方打野反蹲擊殺。' },
+          { t: '控線發育，呼叫打野越塔 Gank', s: '節奏營運', risk: 0.75, successTxt: '兵線完美進塔，打野配合越塔拿下人頭！', failTxt: '兵線被控住，補刀略微落後。' },
+        ]
+      },
+      {
+        name: '階段 3 (5:00~10:00) 首次回城與首輪中立物件',
+        choices: [
+          { t: '集結隊友爭奪虛空巢蟲 / 首條小龍', s: '正面團戰碰撞', risk: 0.6, successTxt: '團戰大獲全勝，順利控下首條中立資源與領先！', failTxt: '陣型被割裂，丟失小龍。' },
+          { t: '果斷交換資源 (換塔皮 / 換線推塔)', s: '避戰轉線', risk: 0.8, successTxt: '避開正面鋒芒，吃下三層鍍層經濟補償！', failTxt: '地圖節奏被對手牽著走。' },
+        ]
+      },
+      {
+        name: '階段 4 (10:00~15:00) 塔皮鍍層與首塔擊破',
+        choices: [
+          { t: '四人集結強開下路越塔首塔', s: '四包二戰術', risk: 0.65, successTxt: '四包二完美配合，擊破一塔建立前期優勢！', failTxt: '越塔抗塔失誤，被換掉兩人。' },
+          { t: '穩健發育，等待第一件核心裝備', s: '發育拖後期', risk: 0.8, successTxt: '核心裝備順利出爐，迎來第一波強勢期。', failTxt: '防禦塔血量被消耗嚴重。' },
+        ]
+      },
+      {
+        name: '階段 5 (15:00~22:00) 中期營運與龍魂爭奪',
+        choices: [
+          { t: '執行 1-3-1 / 4-1 邊線單帶牽制', s: '單帶施壓', risk: 0.6, successTxt: '邊線通關二塔，拉扯得對手首尾不能相顧！', failTxt: '邊線帶太深被三人包抄抓單。' },
+          { t: '五人抱團野區排眼埋伏抓單', s: '陣地戰抓單', risk: 0.65, successTxt: '真眼埋伏秒殺敵方核心，順勢推上高地！', failTxt: '臉探草叢被反開團滅。' },
+        ]
+      },
+      {
+        name: '階段 6 (22:00~30:00) 巴龍逼團與高地攻防',
+        choices: [
+          { t: '巴龍釣魚，引誘敵方正面接團打滅隊', s: '巴龍決戰', risk: 0.55, successTxt: '【巴龍滅隊！】完美開戰團滅對手並拿下巴龍，勝券在握！', failTxt: '巴龍被敵方打野神級盲視野搶走！' },
+          { t: '帶兵線磨高地防禦塔', s: '耐心蠶食', risk: 0.75, successTxt: '穩紮穩打磨破高地水晶，逼出超級士兵！', failTxt: '被對手頑強清線守住。' },
+        ]
+      },
+      {
+        name: '階段 7 (30:00+) 終局遠古巨龍與主堡決戰',
+        choices: [
+          { t: '遠古巨龍世紀死鬥，全員正面拼到底！', s: '終極生死戰', risk: 0.5, successTxt: '【拿下遠古龍一波結束！】斬殺 Buff 橫掃戰場，直點主堡！', failTxt: '遠古龍團惜敗，無力回天。' },
+          { t: '雙傳送偷拆主堡，孤注一擲基地競速！', s: '背水一戰', risk: 0.45, successTxt: '【神級偷拆！】正面拖住，單人點爆水晶完成史詩翻盤！', failTxt: '偷拆被回城守住，反遭一波。' },
+        ]
+      },
+    ];
+
+    const curP = phases[currentPhase];
+    choose(`決策｜${curP.name}`, curP.choices.map(c => ({
+      t: c.t,
+      s: c.s,
+      f: () => {
+        const pScore = ovr() / 100;
+        const succ = rng.next() < (c.risk * (0.6 + pScore * 0.5));
+        if (succ) {
+          goldDiff += 1500;
+          kills += 1;
+          card('good', curP.name, c.successTxt);
+        } else {
+          goldDiff -= 1500;
+          deaths += 1;
+          card('bad', curP.name, c.failTxt);
+        }
+        currentPhase++;
+        board(1);
+        runNextPhase();
+      }
+    })));
+  }
+
+  runNextPhase();
+}
+
+// ==================== 2. 英雄池特訓 ====================
+function trainChampionMastery(onDone) {
+  const act = $('act');
+  act.style.display = 'block';
+
+  const roleChamps = CHAMPIONS.filter(c => c.primaryRole === S.pos || c.roles.includes(S.pos));
+  const offChamps = CHAMPIONS.filter(c => c.primaryRole !== S.pos && !c.roles.includes(S.pos)).slice(0, 6);
+  const list = [...roleChamps, ...offChamps];
+
+  act.innerHTML = `
+    <div class="title">🎯 英雄自主特訓 (提升熟練度與招牌)</div>
+    <div style="font-size:12px;color:var(--dim);margin-bottom:8px;">選擇一位英雄進行深度特訓 (+35 點熟練度)：</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(105px,1fr));gap:6px;max-height:180px;overflow-y:auto;background:var(--panel2);padding:8px;border-radius:var(--r);margin-bottom:10px;">
+      ${list.map(c => {
+        const pts = S.masteries[c.id] || 0;
+        const mi = getMasteryInfo(pts);
+        return `
+          <button class="btn btn-train-champ" data-id="${c.id}" style="padding:6px;font-size:11.5px;text-align:center;margin:0;">
+            <strong>${c.name}</strong><br>
+            <small style="color:var(--accent);">${mi.name} (${pts}點)</small>
+          </button>
+        `;
+      }).join('')}
+    </div>
+    <button class="btn" id="btn-cancel-train" style="text-align:center;">返回 ▸</button>
+  `;
+
+  act.querySelectorAll('.btn-train-champ').forEach(btn => {
+    btn.onclick = () => {
+      const cId = btn.getAttribute('data-id');
+      const champ = getChampionById(cId);
+      S.masteries[cId] = (S.masteries[cId] || 0) + 35;
+      const newMi = getMasteryInfo(S.masteries[cId]);
+      if (newMi.level >= 5 && !S.signatureChamps.includes(cId)) {
+        S.signatureChamps.push(cId);
+        card('gold', '招牌英雄晉升！', `你的【${champ.name}】已達到 <b class="hl">${newMi.name}</b>！賽場上將觸發更多專屬高光決策！`);
+      } else {
+        card('good', '特訓完成', `自主特訓了【${champ.name}】，熟練度提升至 <b class="hl">${newMi.name} (${S.masteries[cId]}點)</b>！`);
+      }
+      act.style.display = 'none';
+      onDone();
+    };
+  });
+
+  $('btn-cancel-train').onclick = () => {
+    act.style.display = 'none';
+    onDone();
+  };
+}
+
+// ==================== 遊戲主循環 (業餘 ➔ 職業 ➔ 轉會 ➔ 退役) ====================
 function startCareer() {
   divider(`${S.year} · 16 歲 召喚峽谷天梯衝分`);
   board(0);
   tlPush('天梯起步');
 
-  card('info', '天梯啟程', `16 歲的你以一手絕活在台服與韓服大殺四方，天賦與反應驚豔眾人。新賽季開始，請分配你的初始特訓點數！`);
+  card('info', '天梯啟程', `16 歲的你以一手絕活在台服與韓服積分榜展現極限操作，決心追尋電競職業夢。新賽季開始，請分配你的初始特訓點數！`);
 
   // 初始擲骰特訓
   rollDice(5, '16歲 基礎天賦分配', () => {
@@ -460,7 +730,6 @@ function phaseAmateurYear() {
       if (c.effect.macroExp) addAb('macro', 2);
       board(1);
 
-      // 進入試訓會
       phaseAmateurTryouts();
     }
   })));
@@ -506,7 +775,7 @@ function phaseAmateurTryouts() {
   })));
 }
 
-// ==================== 職業賽季年度循環 ====================
+// 職業年度循環
 function startNextProYear() {
   S.year += 1;
   S.age += 1;
@@ -515,7 +784,7 @@ function startNextProYear() {
 
   // 25 歲老化
   if (S.age >= 25) {
-    if (rng.next() < 0.5) {
+    if (!S.traits.IRON_MAN && rng.next() < 0.5) {
       addAb('mechanics', -2);
       card('bad', '生理反應衰退', '年過 25，你感受到手速與極限反應略微下滑，操作 <b class="dn">-2</b>。');
     }
@@ -530,15 +799,12 @@ function startNextProYear() {
   const meta = generateSplitMeta(rng, S.year, 'SPLIT_1');
   card('info', `年度版本公布：${meta.patchTitle}`, `${meta.desc}<br>強勢 T0 英雄焦點：${Object.values(meta.sTierChampions).flat().map(id => getChampionById(id)?.name || id).slice(0, 4).join('、 ')}`);
 
-  // 季前擲骰加點
+  // 季前特訓
   rollDice(4, `${S.age}歲 季前特訓加點`, () => {
-    runProSplit('SPLIT_1', meta, () => {
-      runProSplit('SPLIT_2', meta, () => {
-        runProSplit('SPLIT_3', meta, () => {
-          phaseYearEndTransfer();
-        });
-      });
-    });
+    choose('季前準備就緒', [
+      { t: '🎯 進行英雄自主特訓', s: '提升專精英雄熟練度', f: () => trainChampionMastery(() => runProSplit('SPLIT_1', meta, () => runProSplit('SPLIT_2', meta, () => runProSplit('SPLIT_3', meta, () => phaseYearEndTransfer())))) },
+      { t: '⚔️ 直接開啟 Split 1 例行賽', main: true, f: () => runProSplit('SPLIT_1', meta, () => runProSplit('SPLIT_2', meta, () => runProSplit('SPLIT_3', meta, () => phaseYearEndTransfer()))) }
+    ]);
   });
 }
 
@@ -547,22 +813,36 @@ function runProSplit(splitKey, meta, onSplitDone) {
   const splitInfo = SPLITS[splitKey];
   divider(`${S.year} · ${splitInfo.name}`);
 
-  // 模擬常規賽成績
   const pOvr = ovr();
-  const wins = Math.min(7, Math.max(1, Math.round(pOvr / 12 + rng.range(-1, 2))));
-  const losses = 7 - wins;
-  S.stats.matchesPlayed += 7;
-  S.stats.matchesWon += wins;
+  const oppTeams = TEAMS.filter(t => t.id !== S.teamId && (t.region === 'LCP' || t.region === S.region));
+  const nextOpp = rng.choice(oppTeams) || TEAMS[0];
 
-  const kills = rng.range(18, 38);
-  const deaths = rng.range(8, 20);
-  const assists = rng.range(25, 55);
-  S.stats.kills += kills;
-  S.stats.deaths += deaths;
-  S.stats.assists += assists;
+  choose(`${splitInfo.name} · 系列賽對決 (${nextOpp.name})`, [
+    {
+      t: '🎮 親自出戰 (進入 BP 選角 & 7 階段戰術決策)',
+      main: true,
+      s: '手動選擇英雄、黑科技戰術與關鍵時刻大招決策',
+      f: () => {
+        interactiveBPDraft(nextOpp, (won) => {
+          proceedSplitPostMatch(splitKey, splitInfo, won, onSplitDone);
+        });
+      }
+    },
+    {
+      t: '⚡ 快速模擬本系列賽',
+      s: '系統依綜合戰力直接計算勝負',
+      f: () => {
+        const won = rng.next() < (pOvr / 100);
+        S.stats.matchesPlayed += 7;
+        S.stats.matchesWon += won ? 5 : 2;
+        card(won ? 'good' : 'bad', `${splitInfo.name} 常規賽戰報`, `系列賽以 <b class="${won ? 'up' : 'dn'}">${won ? '2:0 獲勝' : '1:2 惜敗'}</b> 結束。`);
+        proceedSplitPostMatch(splitKey, splitInfo, won, onSplitDone);
+      }
+    }
+  ]);
+}
 
-  card('good', `${splitInfo.name} 常規賽戰報`, `常規賽戰績：<b class="hl">${wins} 勝 ${losses} 敗</b>。<br>個人數據：${kills} 殺 / ${deaths} 死 / ${assists} 助攻。`);
-
+function proceedSplitPostMatch(splitKey, splitInfo, won, onSplitDone) {
   // 賽季事件
   const ev = getRandomEvent(rng, S.age);
   choose(`賽事事件：${ev.title}`, ev.choices.map(c => ({
@@ -573,33 +853,31 @@ function runProSplit(splitKey, meta, onSplitDone) {
       board(1);
 
       // 季後賽 BO5
-      const qualified = wins >= 4;
-      if (qualified) {
-        const winPlayoffs = rng.next() < (pOvr / 105);
-        if (winPlayoffs) {
-          S.stats.titlesWon += 1;
-          S.popularity += 20;
-          card('gold', `🏆 榮獲 ${splitInfo.name} 賽區總冠軍！`, `你在 BO5 總決賽決勝局上演神級開戰，率隊奪得冠軍獎盃與季後賽 MVP！`);
-          tlPush(`LCP 冠軍 (${splitInfo.shortName})`);
-        } else {
-          card('info', `${splitInfo.name} 季後賽四強`, `在半決賽鏖戰五局惜敗，獲得季軍。`);
-        }
+      const pOvr = ovr();
+      const winPlayoffs = won && (rng.next() < (pOvr / 105));
+      if (winPlayoffs) {
+        S.stats.titlesWon += 1;
+        S.popularity += 20;
+        card('gold', `🏆 榮獲 ${splitInfo.name} 賽區總冠軍！`, `你在 BO5 總決賽決勝局上演神級開戰，率隊奪得冠軍獎盃與季後賽 MVP！`);
+        tlPush(`LCP 冠軍 (${splitInfo.shortName})`);
+      } else {
+        card('info', `${splitInfo.name} 季後賽結算`, `在半決賽鏖戰五局惜敗，獲得季軍。`);
+      }
 
-        // 國際賽 (First Stand / MSI / Worlds)
-        if (splitInfo.qualifiesFor) {
-          const tourney = INTERNATIONAL_TOURNAMENTS[splitInfo.qualifiesFor];
-          const worldRoll = rng.range(1, 100);
-          if (worldRoll >= 75 && pOvr >= 70) {
-            S.stats.intlTitles += 1;
-            if (tourney.id === 'WORLDS') {
-              S.stats.worldsTitles += 1;
-              S.popularity += 50;
-              card('gold', `🏆【世界之巔】${tourney.name} 總冠軍 & FMVP！`, `在全球數千萬觀眾矚目下，你在總決賽斬落 LCK 豪門，捧起召喚師獎盃！名留青史！`);
-              tlPush('世界大賽冠軍 🏆');
-              unlockTrait('BIG_STAGE_HERO');
-            } else {
-              card('gold', `🏆 榮獲 ${tourney.name} 國際賽冠軍！`, `擊敗各大賽區強隊，登頂國際舞台！`);
-            }
+      // 國際賽 (First Stand / MSI / Worlds)
+      if (splitInfo.qualifiesFor) {
+        const tourney = INTERNATIONAL_TOURNAMENTS[splitInfo.qualifiesFor];
+        const worldRoll = rng.range(1, 100);
+        if (worldRoll >= 72 && pOvr >= 68) {
+          S.stats.intlTitles += 1;
+          if (tourney.id === 'WORLDS') {
+            S.stats.worldsTitles += 1;
+            S.popularity += 50;
+            card('gold', `🏆【世界之巔】${tourney.name} 總冠軍 & FMVP！`, `在全球數千萬觀眾矚目下，你在總決賽斬落 LCK 豪門，捧起召喚師獎盃！名留青史！`);
+            tlPush('世界大賽冠軍 🏆');
+            unlockTrait('BIG_STAGE_HERO');
+          } else {
+            card('gold', `🏆 榮獲 ${tourney.name} 國際賽冠軍！`, `擊敗各大賽區強隊，登頂國際舞台！`);
           }
         }
       }
@@ -613,7 +891,7 @@ function runProSplit(splitKey, meta, onSplitDone) {
   })));
 }
 
-// ==================== 轉會期與引退 ====================
+// 4. 轉會市場與 LCK/LPL 旅外
 function phaseYearEndTransfer() {
   board(2);
   divider(`${S.year} · 年度轉會市場窗口`);
@@ -626,18 +904,18 @@ function phaseYearEndTransfer() {
     teamName: S.team,
     teamId: S.teamId,
     salary: Math.round(S.salary * rng.range(105, 125) / 100),
-    desc: '原戰隊核心續約'
+    desc: '原戰隊核心頂薪續約'
   });
 
   // 國內豪門
-  if (pOvr >= 68) {
-    offers.push({ teamName: 'CTBC Flying Oyster (中信飛蠔)', teamId: 'CFO', salary: 2800000, desc: 'LCP 頂薪邀請' });
+  if (pOvr >= 66) {
+    offers.push({ teamName: 'CTBC Flying Oyster (中信飛蠔)', teamId: 'CFO', salary: 3200000, desc: 'LCP 頂薪邀請' });
   }
 
   // 旅外 LCK / LPL
-  if (pOvr >= 74 || S.stats.worldsTitles >= 1) {
-    offers.push({ teamName: 'T1 (南韓 LCK 豪門)', teamId: 'T1', salary: 15000000, desc: 'LCK 天價旅外' });
-    offers.push({ teamName: 'Bilibili Gaming (中國 LPL 頂級隊)', teamId: 'BLG', salary: 18000000, desc: 'LPL 頂級合約' });
+  if (pOvr >= 72 || S.stats.worldsTitles >= 1) {
+    offers.push({ teamName: 'T1 (南韓 LCK 豪門)', teamId: 'T1', salary: 16000000, desc: 'LCK 天價旅外挑戰' });
+    offers.push({ teamName: 'Bilibili Gaming (中國 LPL 頂級隊)', teamId: 'BLG', salary: 19000000, desc: 'LPL 頂級全華班' });
   }
 
   card('info', '轉會期報價', `經紀人為你帶來了本年度各俱樂部的報價清單。`);
@@ -650,6 +928,7 @@ function phaseYearEndTransfer() {
       S.team = o.teamName;
       S.teamId = o.teamId;
       S.salary = o.salary;
+      S.money += Math.round(o.salary * 0.4);
       card('gold', '轉會簽約確立', `你正式加盟 <b class="hl">${o.teamName}</b>！`);
       tlPush(`加盟 ${o.teamName}`);
 
@@ -664,7 +943,7 @@ function phaseYearEndTransfer() {
     optList.push({
       t: '選擇在此時退役',
       warn: true,
-      s: '結束職業電競選手生涯，結算名人堂歷史定位',
+      s: '結束職業電競選手生涯，結算名人堂歷史定位與下載結算圖',
       f: () => triggerRetirement()
     });
   }
@@ -672,6 +951,7 @@ function phaseYearEndTransfer() {
   choose('請選擇你的轉會去向：', optList);
 }
 
+// ==================== 5. 傳奇退役典禮與 Canvas 圖片下載 ====================
 function triggerRetirement() {
   S.done = true;
   divider(`${S.year} · 傳奇退役典禮 (Hall of Fame)`);
@@ -685,10 +965,17 @@ function triggerRetirement() {
     stats: S.ab,
     popularity: S.popularity,
     money: S.money,
+    salary: S.salary,
     careerStats: S.stats,
     traits: Object.keys(S.traits).filter(k => S.traits[k]),
+    team: S.team,
+    seed: SEED,
     getOverallRating: () => ovr()
   });
+
+  // 繪製 Canvas 結算圖
+  const canvas = RetirementManager.renderCareerCardCanvas(summary);
+  const dataUrl = canvas.toDataURL('image/png');
 
   card('gold', '🏆 名人堂生涯總結算', `
     <div style="font-size:26px;text-align:center;margin:10px 0;">${summary.tier.badge} <b style="color:var(--gold);">${summary.tier.name}</b></div>
@@ -696,19 +983,49 @@ function triggerRetirement() {
     <table class="fin">
       <tr><th>項目</th><th>紀錄</th><th>項目</th><th>紀錄</th></tr>
       <tr><td>出賽場次</td><td>${summary.matchesPlayed} 場</td><td>生涯勝率</td><td>${summary.winRate}%</td></tr>
-      <tr><td>賽區冠軍</td><td>${summary.titlesWon} 座</td><td>國際賽冠軍</td><td>${summary.internationalTitles} 座</td></tr>
+      <tr><td>賽區冠軍</td><td>${summary.titlesWon} 座</td><td>國際賽冠軍</td><td>${summary.intlTitles} 座</td></tr>
       <tr><td>世界冠軍</td><td>🏆 ${summary.worldsTitles} 座</td><td>總獎金身價</td><td>$${summary.totalMoney.toLocaleString()} 元</td></tr>
     </table>
+    <div style="margin-top:14px;text-align:center;">
+      <img src="${dataUrl}" style="max-width:100%;border-radius:var(--r);border:1px solid var(--edge);box-shadow:0 8px 24px rgba(0,0,0,0.5);" alt="LoLLife 生涯結算卡">
+    </div>
   `);
 
   choose('生涯已畫下句點', [
     {
-      t: '📋 複製生涯傳奇分享卡',
+      t: '📥 下載生涯傳奇圖片 (PNG)',
+      main: true,
+      s: '下載高清結算卡片圖片至本機',
+      f: () => {
+        RetirementManager.downloadCanvas(canvas, `LoLLife_${S.inGameId}_Career.png`);
+        triggerRetirementEndMenu(summary, canvas);
+      }
+    },
+    {
+      t: '📋 複製生涯文字總結',
+      s: '複製文字紀錄至剪貼簿',
+      f: () => {
+        const text = `🏆 【LoLLife 選手生涯評價】\n選手：${S.inGameId} (${S.name}) · ${POS_NAMES[S.pos]}\n歷史定位：${summary.tier.badge} ${summary.tier.name} (傳奇分: ${summary.score})\n生涯戰績：${summary.matchesPlayed} 場 (勝率 ${summary.winRate}%)\n冠軍榮譽：賽區冠軍 ${summary.titlesWon} 座 | 國際賽 ${summary.intlTitles} 座 | 世界大賽 ${summary.worldsTitles} 座\n種子碼：${SEED}`;
+        navigator.clipboard.writeText(text);
+        alert('生涯傳奇文字已複製至剪貼簿！');
+        triggerRetirementEndMenu(summary, canvas);
+      }
+    },
+    {
+      t: '🔄 開啟全新選手人生',
+      f: () => { location.href = location.pathname; }
+    }
+  ]);
+}
+
+function triggerRetirementEndMenu(summary, canvas) {
+  choose('生涯結算選單', [
+    {
+      t: '📥 再次下載結算圖片 (PNG)',
       main: true,
       f: () => {
-        const text = `🏆 【LoLLife 選手生涯評價】\n選手：${S.inGameId} (${S.name}) · ${POS_NAMES[S.pos]}\n歷史定位：${summary.tier.badge} ${summary.tier.name} (傳奇分: ${summary.score})\n生涯戰績：${summary.matchesPlayed} 場 (勝率 ${summary.winRate}%)\n冠軍榮譽：賽區冠軍 ${summary.titlesWon} 座 | 國際賽 ${summary.internationalTitles} 座 | 世界大賽 ${summary.worldsTitles} 座\n種子碼：${SEED}`;
-        navigator.clipboard.writeText(text);
-        alert('生涯傳奇文字卡已複製至剪貼簿！可直接分享給好友！');
+        RetirementManager.downloadCanvas(canvas, `LoLLife_${S.inGameId}_Career.png`);
+        triggerRetirementEndMenu(summary, canvas);
       }
     },
     {
