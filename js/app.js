@@ -1074,8 +1074,14 @@ function initApp() {
 
   // 開始按鈕
   $('btn-start').onclick = () => {
-    const name = $('in-name').value.trim() || '陳明';
-    const inGameId = $('in-id').value.trim() || 'Dreamer';
+    const rawName = $('in-name').value.trim();
+    const rawId = $('in-id').value.trim();
+
+    const defaultNames = ['陳明', '林宇', '張豪', '黃凱', '李廷', '王翔', '許博', '楊浩'];
+    const defaultIds = ['Dreamer', 'Apex', 'Shadow', 'Nova', 'Flash', 'Blade', 'Viper', 'Echo'];
+
+    const name = rawName || rng.choice(defaultNames);
+    const inGameId = rawId || rng.choice(defaultIds);
     const posBtn = $('seg-pos').querySelector('button.on');
     const pos = posBtn ? posBtn.getAttribute('data-v') : 'MID';
 
