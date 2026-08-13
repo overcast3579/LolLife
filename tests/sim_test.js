@@ -59,7 +59,7 @@ const simPlayer = createNewPlayer(careerRng, { role: 'MID', name: '傳奇小豪'
 const simPool = new ChampionPoolManager();
 simPool.initPlayerPool(careerRng, 'MID');
 
-simPlayer.currentTeamId = 'CFO';
+simPlayer.currentTeamId = 'FSG';
 simPlayer.contractStatus = 'Starter';
 simPlayer.salary = 1200000;
 

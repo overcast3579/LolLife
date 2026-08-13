@@ -742,13 +742,13 @@ function phaseAmateurTryouts() {
   const pOvr = ovr();
   const offers = [];
   if (pOvr >= 62) {
-    offers.push({ teamId: 'CFO', teamName: 'CTBC Flying Oyster (中信飛蠔)', status: 'Starter', salary: 1200000, desc: 'LCP 正式先發' });
-    offers.push({ teamId: 'PSG', teamName: 'PSG Talon', status: 'Starter', salary: 1500000, desc: 'LCP 豪門先發' });
+    offers.push({ teamId: 'FSG', teamName: 'Flying Steel Gaming (飛鋼電競)', status: 'Starter', salary: 1200000, desc: 'LCP 豪門先發' });
+    offers.push({ teamId: 'TSG', teamName: 'Talon Storm Gaming (暴風獵鷹)', status: 'Starter', salary: 1500000, desc: 'LCP 頂級先發' });
   } else if (pOvr >= 54) {
-    offers.push({ teamId: 'DCG', teamName: 'Deep Cross Gaming', status: 'Academy', salary: 450000, desc: '二隊青訓主力' });
-    offers.push({ teamId: 'FAK', teamName: 'Frank Esports', status: 'Sub', salary: 500000, desc: '一隊輪換替補' });
+    offers.push({ teamId: 'CRG', teamName: 'Cross Realm Gaming (跨界幻影)', status: 'Academy', salary: 450000, desc: '二隊青訓主力' });
+    offers.push({ teamId: 'FRK', teamName: 'Phoenix Frank (赤焰鳳凰)', status: 'Sub', salary: 500000, desc: '一隊輪換替補' });
   } else {
-    offers.push({ teamId: 'TW_AMATEUR_ROOKIE', teamName: '超競青年培訓隊', status: 'Amateur', salary: 150000, desc: '業餘培訓合約' });
+    offers.push({ teamId: 'TW_AMATEUR_ROOKIE', teamName: '星火青年電競培訓隊 (SEC)', status: 'Amateur', salary: 150000, desc: '業餘培訓合約' });
   }
 
   card('info', '試訓結果出爐', `各大俱樂部管理層與教練在實機測試後給予了極高評價，送來了正式簽約意向書！`);
@@ -909,13 +909,13 @@ function phaseYearEndTransfer() {
 
   // 國內豪門
   if (pOvr >= 66) {
-    offers.push({ teamName: 'CTBC Flying Oyster (中信飛蠔)', teamId: 'CFO', salary: 3200000, desc: 'LCP 頂薪邀請' });
+    offers.push({ teamName: 'Flying Steel Gaming (飛鋼電競)', teamId: 'FSG', salary: 3200000, desc: 'LCP 頂薪邀請' });
   }
 
   // 旅外 LCK / LPL
   if (pOvr >= 72 || S.stats.worldsTitles >= 1) {
-    offers.push({ teamName: 'T1 (南韓 LCK 豪門)', teamId: 'T1', salary: 16000000, desc: 'LCK 天價旅外挑戰' });
-    offers.push({ teamName: 'Bilibili Gaming (中國 LPL 頂級隊)', teamId: 'BLG', salary: 19000000, desc: 'LPL 頂級全華班' });
+    offers.push({ teamName: 'Apex One (南韓 LCK 豪門 AO)', teamId: 'AO', salary: 16000000, desc: 'LCK 天價旅外挑戰' });
+    offers.push({ teamName: 'Byte Gaming (中國 LPL 頂級隊 BG)', teamId: 'BG', salary: 19000000, desc: 'LPL 頂級全華班' });
   }
 
   card('info', '轉會期報價', `經紀人為你帶來了本年度各俱樂部的報價清單。`);
