@@ -236,64 +236,139 @@ function choose(title, opts) {
   scrollBottom();
 }
 
+function abCost(k) {
+  if (!S) return 1;
+  const cur = S.ab[k], pk = S.pot[k] || 75;
+  let c = cur >= 70 ? 4 : cur >= 60 ? 2 : 1;
+  if (cur >= pk) c *= 3;
+  return c;
+}
+
 // ==================== 骰子與加點系統 ====================
 function rollDice(count = 4, label = '季前特訓加點', onComplete) {
   const act = $('act');
   act.style.display = 'block';
-  let values = [];
-  for (let i = 0; i < count; i++) values.push(rng.range(1, 6));
-  let pool = values.reduce((a, b) => a + b, 0);
+  let dice = [];
+  for (let i = 0; i < count; i++) dice.push(rng.range(1, 6));
+  let idx = 0;
+  let hist = []; // [{ key, got, prevCarry }]
 
-  const renderAlloc = () => {
+  function remaining() {
+    return dice.length - idx;
+  }
+
+  function renderAlloc() {
+    const activeVal = idx < dice.length ? dice[idx] : 0;
+
     act.innerHTML = `
       <div class="title">${label}</div>
       <div id="dice">
-        ${values.map(v => `<div class="die">${v}</div>`).join('')}
+        ${dice.map((v, i) => `
+          <div class="die ${i < idx ? 'used' : ''} ${i === idx ? 'active' : ''} ${v === 6 ? 'six' : ''}">${v}</div>
+        `).join('')}
       </div>
-      <div class="pool">剩餘可用點數：<b>${pool}</b> 點</div>
+      <div class="pool">
+        ${remaining() > 0 
+          ? `當前骰子：<b class="hl">${activeVal} 點</b>（點擊下方能力直接挹注，剩餘 ${remaining()} 顆）` 
+          : `<b class="hl">所有骰子已分配完畢！</b>`}
+      </div>
       <div id="alloc-rows">
         ${Object.keys(ABL).map(k => {
           const cur = S.ab[k];
           const pot = S.pot[k] || 75;
           const pct = Math.min(100, Math.round((cur / 80) * 100));
           const potPct = Math.min(100, Math.round((pot / 80) * 100));
-          const cost = cur >= 70 ? 4 : cur >= 60 ? 2 : 1;
+          const cost = abCost(k);
+          const cr = (S.carry && S.carry[k]) || 0;
+          const cap = cur >= 80;
           return `
-            <div class="abrow" data-key="${k}">
+            <div class="abrow${cap ? ' capped' : ''}" data-key="${k}">
               <div class="nm">${ABL[k]}</div>
               <div class="bar">
                 <i style="width:${pct}%;"></i>
                 <em style="left:${potPct}%;"></em>
               </div>
-              <div class="val">${cur} <b>(+${cost})</b></div>
+              <div class="val">
+                ${cur}<small style="opacity:0.5;">/${pot}</small>
+                ${cost > 1 ? `<span style="display:block;opacity:0.5;font-size:10.5px;margin-top:-2px;">${cr}/${cost}</span>` : ''}
+              </div>
             </div>
           `;
         }).join('')}
       </div>
-      <button class="btn main" id="btn-finish-alloc" style="margin-top:10px;text-align:center;">完成分配 ▸ 繼續</button>
+      <div class="row2" style="margin-top:10px;">
+        <button class="btn" id="btn-undo-alloc" style="text-align:center; ${hist.length === 0 ? 'opacity:0.4; cursor:default;' : ''}" ${hist.length === 0 ? 'disabled' : ''}>
+          ↩ 退回上一步
+        </button>
+        ${remaining() === 0 ? `
+          <button class="btn main" id="btn-finish-alloc" style="text-align:center;">
+            完成分配 ▸ 繼續
+          </button>
+        ` : `
+          <button class="btn" style="text-align:center; opacity:0.4; cursor:default;" disabled>
+            剩餘 ${remaining()} 顆骰子
+          </button>
+        `}
+      </div>
     `;
 
+    // 點擊能力列直接挹注當前第一顆骰子
     act.querySelectorAll('.abrow').forEach(row => {
       row.onclick = () => {
+        if (remaining() <= 0) return;
         const k = row.getAttribute('data-key');
-        const cur = S.ab[k];
-        const cost = cur >= 70 ? 4 : cur >= 60 ? 2 : 1;
-        if (pool >= cost && cur < 80) {
-          pool -= cost;
-          addAb(k, 1);
-          board(0);
-          renderAlloc();
-        }
+        if (S.ab[k] >= 80) return;
+
+        const amt = dice[idx];
+        const prevCarry = (S.carry && S.carry[k]) || 0;
+        const got = addAb(k, amt);
+
+        hist.push({ key: k, got, prevCarry });
+        idx++;
+        board(0);
+        renderAlloc();
       };
     });
 
-    $('btn-finish-alloc').onclick = () => {
-      act.style.display = 'none';
-      if (onComplete) onComplete();
-    };
-  };
+    // 退回功能
+    const btnUndo = $('btn-undo-alloc');
+    if (btnUndo && hist.length > 0) {
+      btnUndo.onclick = () => {
+        const last = hist.pop();
+        S.ab[last.key] -= last.got;
+        if (S.carry) S.carry[last.key] = last.prevCarry;
+        idx--;
+        board(0);
+        renderAlloc();
+      };
+    }
+
+    // 完成按鈕
+    const btnFinish = $('btn-finish-alloc');
+    if (btnFinish) {
+      btnFinish.onclick = () => {
+        act.style.display = 'none';
+        if (onComplete) onComplete();
+      };
+    }
+  }
 
   renderAlloc();
+
+  // 初始擲骰滾動動畫
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const diceEls = act.querySelectorAll('#dice .die');
+    diceEls.forEach((el, i) => {
+      el.classList.add('rolling');
+      const iv = setInterval(() => { el.textContent = 1 + Math.floor(Math.random() * 6); }, 60);
+      setTimeout(() => {
+        clearInterval(iv);
+        el.classList.remove('rolling');
+        el.textContent = dice[i];
+        if (dice[i] === 6) el.classList.add('six');
+      }, 200 + i * 80);
+    });
+  }
 }
 
 // ==================== 特質側欄渲染 ====================
