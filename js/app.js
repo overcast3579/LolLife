@@ -137,6 +137,12 @@ function ensureSeasonProperties() {
       style: 'BALANCED'
     };
   }
+  if (S.season && S.season.standings && !S.season.academyStandings) {
+    S.season.academyStandings = {};
+    Object.keys(S.season.standings).forEach(id => {
+      S.season.academyStandings[id] = { wins: S.season.standings[id].wins, losses: S.season.standings[id].losses };
+    });
+  }
 }
 
 function recordMatchStats(won, isManual, manualK = 0, manualD = 0, manualA = 0) {
@@ -1395,14 +1401,18 @@ function runProSplit(splitKey, onSplitDone) {
   const regionTeams = TEAMS.filter(t => t.region === region);
   
   const standings = {};
-  regionTeams.forEach(t => { standings[t.id] = { wins: 0, losses: 0 }; });
+  const academyStandings = {};
+  regionTeams.forEach(t => { 
+    standings[t.id] = { wins: 0, losses: 0 }; 
+    academyStandings[t.id] = { wins: 0, losses: 0 }; 
+  });
 
   const opponents = regionTeams.filter(t => t.id !== S.teamId);
   const schedule = opponents.map(opp => ({ oppTeamId: opp.id, isFinished: false, won: false }));
   const scheduleRng = new RNG(`${S.seed}_${S.year}_${splitKey}`);
   schedule.sort(() => scheduleRng.next() - 0.5);
 
-  S.season = { standings, schedule, currentRound: 0, stage: 'REGULAR', midSplitEventTriggered: false };
+  S.season = { standings, academyStandings, schedule, currentRound: 0, stage: 'REGULAR', midSplitEventTriggered: false };
   
   // Initialize current split stats
   S.currentSplitStats = { matchesPlayed: 0, matchesWon: 0, kills: 0, deaths: 0, assists: 0, pogCount: 0 };
@@ -1747,9 +1757,8 @@ function runProSplit(splitKey, onSplitDone) {
     } else if (season.stage === 'PLAYOFFS_SEMI') {
       const opp = getPlayoffsOpponent('SEMI');
       if (!opp) { proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone); return; }
-      const isPlayerStarter = S.rosterStatus === 'STARTER';
       
-      if (isPlayerStarter) {
+      if (S.rosterStatus === 'STARTER') {
         choose(`🏆 季後賽準決賽 BO5 (${opp.name})`, [
           {
             t: '🎮 進入決勝局對決 (決勝生死戰)',
@@ -1770,6 +1779,32 @@ function runProSplit(splitKey, onSplitDone) {
             f: () => {
               const teamOvr = ovr() + getTacticModifier();
               const won = rng.next() < (teamOvr / 105);
+              resolvePlayoffsSemi(won, false);
+            }
+          }
+        ]);
+      } else if (S.rosterStatus === 'ACADEMY') {
+        const academyOpp = { ...opp, name: `${opp.shortName} Academy`, shortName: `${opp.shortName} Acad` };
+        choose(`🏆 二軍季後賽準決賽 BO5 (${academyOpp.name})`, [
+          {
+            t: '🎮 進入決勝局對決 (二軍準決賽)',
+            main: true,
+            s: S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動選擇英雄，贏下這一局即可挺進二軍總決賽！',
+            f: () => {
+              interactiveBPDraft(academyOpp, meta, (won) => { resolvePlayoffsSemi(won, true); });
+            }
+          },
+          {
+            t: '📊 查看當前狀態與先發競爭數據',
+            s: '查看您的手腕健康、疲勞值、教練信任度以及競爭對手能力',
+            f: () => { showPlayerCompetitorStats(); }
+          },
+          {
+            t: '⚡ 快速模擬準決賽',
+            s: '系統直接計算 BO5 對決勝負，您作為二軍主力出戰',
+            f: () => {
+              const teamOvr = ovr() + getTacticModifier();
+              const won = rng.next() < (teamOvr / 100);
               resolvePlayoffsSemi(won, false);
             }
           }
@@ -1811,7 +1846,7 @@ function runProSplit(splitKey, onSplitDone) {
               S.fatigue = Math.max(0, S.fatigue - 30);
               S.wristHealth = Math.min(100, S.wristHealth + 15);
               S.coachTrust = Math.max(0, S.coachTrust - 5);
-              card('good', '老實養精蓄銳', '你選擇休養調度身體。疲勞值 <b class="up">-30%</b>，手腕健康度 <b class="up">+15%</b>，雖然教練對你沒在加練微有微詞。');
+              card('gold', '老實養精蓄銳', '你選擇休養調度身體。疲勞值 <b class="up">-30%</b>，手腕健康度 <b class="up">+15%</b>，雖然教練對你沒在加練微有微詞。');
               const won = rng.next() < (S.benchCompetitorOvr / 105);
               resolvePlayoffsSemi(won, false);
             }
@@ -1834,9 +1869,8 @@ function runProSplit(splitKey, onSplitDone) {
     } else if (season.stage === 'PLAYOFFS_FINAL') {
       const opp = getPlayoffsOpponent('FINAL');
       if (!opp) { proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone); return; }
-      const isPlayerStarter = S.rosterStatus === 'STARTER';
       
-      if (isPlayerStarter) {
+      if (S.rosterStatus === 'STARTER') {
         choose(`🏆 季後賽總決賽 BO5 (${opp.name})`, [
           {
             t: '🎮 進入總決賽對決 (總冠軍點生死戰)',
@@ -1857,6 +1891,32 @@ function runProSplit(splitKey, onSplitDone) {
             f: () => {
               const teamOvr = ovr() + getTacticModifier();
               const won = rng.next() < (teamOvr / 110);
+              resolvePlayoffsFinal(won, false);
+            }
+          }
+        ]);
+      } else if (S.rosterStatus === 'ACADEMY') {
+        const academyOpp = { ...opp, name: `${opp.shortName} Academy`, shortName: `${opp.shortName} Acad` };
+        choose(`🏆 二軍季後賽總決賽 BO5 (${academyOpp.name})`, [
+          {
+            t: '🎮 進入總決賽對決 (二軍總冠軍點生死戰)',
+            main: true,
+            s: S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動進行選角與戰術對決，捧起二軍聯賽冠軍獎盃！',
+            f: () => {
+              interactiveBPDraft(academyOpp, meta, (won) => { resolvePlayoffsFinal(won, true); });
+            }
+          },
+          {
+            t: '📊 查看當前狀態與先發競爭數據',
+            s: '查看您的手腕健康、疲勞值、教練信任度以及競爭對手能力',
+            f: () => { showPlayerCompetitorStats(); }
+          },
+          {
+            t: '⚡ 快速模擬二軍總決賽',
+            s: '系統直接計算二軍總冠軍歸屬',
+            f: () => {
+              const teamOvr = ovr() + getTacticModifier();
+              const won = rng.next() < (teamOvr / 105);
               resolvePlayoffsFinal(won, false);
             }
           }
@@ -1898,7 +1958,7 @@ function runProSplit(splitKey, onSplitDone) {
               S.fatigue = Math.max(0, S.fatigue - 30);
               S.wristHealth = Math.min(100, S.wristHealth + 15);
               S.coachTrust = Math.max(0, S.coachTrust - 5);
-              card('good', '老實養精蓄銳', '你選擇休養調度身體。疲勞值 <b class="up">-30%</b>，手腕健康度 <b class="up">+15%</b>，雖然教練對你沒在加練微有微詞。');
+              card('gold', '老實養精蓄銳', '你選擇休養調度身體。疲勞值 <b class="up">-30%</b>，手腕健康度 <b class="up">+15%</b>，雖然教練對你沒在加練微有微詞。');
               const won = rng.next() < (S.benchCompetitorOvr / 110);
               resolvePlayoffsFinal(won, false);
             }
@@ -2252,6 +2312,8 @@ function runProSplit(splitKey, onSplitDone) {
 
   function simulateOtherTeams(excludeOppId) {
     const regionTeams = TEAMS.filter(t => t.region === region && t.id !== S.teamId && t.id !== excludeOppId);
+    
+    // 1. Simulate A-team regular matches
     const shuffled = [...regionTeams].sort(() => rng.next() - 0.5);
     for (let i = 0; i < shuffled.length; i += 2) {
       if (i + 1 < shuffled.length) {
@@ -2264,21 +2326,47 @@ function runProSplit(splitKey, onSplitDone) {
         else { S.season.standings[t2.id].wins++; S.season.standings[t1.id].losses++; }
       }
     }
+
+    // 2. Simulate Academy matches in parallel
+    if (S.season.academyStandings) {
+      const shuffledAca = [...regionTeams].sort(() => rng.next() - 0.5);
+      for (let i = 0; i < shuffledAca.length; i += 2) {
+        if (i + 1 < shuffledAca.length) {
+          const t1 = shuffledAca[i];
+          const t2 = shuffledAca[i+1];
+          const p1 = t1.baseRating || 72;
+          const p2 = t2.baseRating || 72;
+          const winProb = p1 / (p1 + p2);
+          if (rng.next() < winProb) { S.season.academyStandings[t1.id].wins++; S.season.academyStandings[t2.id].losses++; }
+          else { S.season.academyStandings[t2.id].wins++; S.season.academyStandings[t1.id].losses++; }
+        }
+      }
+    }
   }
 
   function showStandingsCard() {
-    const list = Object.keys(S.season.standings).map(id => ({
-      id,
-      name: getTeamById(id)?.shortName || id,
-      wins: S.season.standings[id].wins,
-      losses: S.season.standings[id].losses
-    }));
+    const isAcademy = S.rosterStatus === 'ACADEMY';
+    const targetStandings = (isAcademy && S.season.academyStandings) ? S.season.academyStandings : S.season.standings;
+    const titleText = isAcademy ? '📊 二軍聯賽積分榜' : '📊 LCP 聯賽積分榜';
+
+    const list = Object.keys(targetStandings).map(id => {
+      const teamObj = getTeamById(id);
+      const name = isAcademy 
+        ? `${teamObj ? teamObj.shortName : id} Acad` 
+        : `${teamObj ? teamObj.shortName : id}`;
+      return {
+        id,
+        name,
+        wins: targetStandings[id].wins,
+        losses: targetStandings[id].losses
+      };
+    });
     list.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
     let tableRows = list.map((t, idx) => {
       const isPlayer = t.id === S.teamId;
       return `<tr style="${isPlayer ? 'color:var(--accent); font-weight:bold;' : ''}"><td style="text-align:left;padding:6px 4px;border-bottom:1px solid var(--edge);">#${idx+1}</td><td style="text-align:left;padding:6px 4px;border-bottom:1px solid var(--edge);">${t.name}${isPlayer ? ' (YOU)' : ''}</td><td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--edge);">${t.wins}</td><td style="text-align:right;padding:6px 4px;border-bottom:1px solid var(--edge);">${t.losses}</td></tr>`;
     }).join('');
-    card('info', '📊 聯賽積分榜', `
+    card('info', titleText, `
       <table class="st" style="width:100%; border-collapse:collapse; font-size:12px;">
         <thead><tr style="color:var(--dim);border-bottom:1px solid var(--edge);"><th style="text-align:left;padding:4px;">排名</th><th style="text-align:left;padding:4px;">戰隊</th><th style="text-align:right;padding:4px 8px;">勝</th><th style="text-align:right;padding:4px;">負</th></tr></thead>
         <tbody>${tableRows}</tbody>
@@ -2342,22 +2430,39 @@ function runProSplit(splitKey, onSplitDone) {
 
   function checkPlayoffsQualification() {
     const season = S.season;
-    const list = Object.keys(season.standings).map(id => ({
+    const isAcademy = S.rosterStatus === 'ACADEMY';
+    const targetStandings = (isAcademy && S.season.academyStandings) ? S.season.academyStandings : S.season.standings;
+    
+    const list = Object.keys(targetStandings).map(id => ({
       id,
-      wins: season.standings[id].wins,
-      losses: season.standings[id].losses
+      wins: targetStandings[id].wins,
+      losses: targetStandings[id].losses
     }));
     list.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
     const rank = list.findIndex(t => t.id === S.teamId) + 1;
-    card('info', '例行賽全部結束', `例行賽最終排名：第 <b class="hl">#${rank} 名</b> (${season.standings[S.teamId].wins} 勝 ${season.standings[S.teamId].losses} 敗)`);
-    if (rank <= 4) {
-      card('good', '🎉 晉級季後賽！', '恭喜隊伍成功殺入季後賽四強席位！我們將在準決賽中迎戰強敵。');
-      season.stage = 'PLAYOFFS_SEMI';
-      choose('例行賽結算', [{ t: '開啟季後賽準決賽 BO5 ▸', main: true, f: () => playSeasonStep() }]);
+    
+    if (isAcademy) {
+      card('info', '二軍聯賽例行賽結束', `二軍例行賽最終排名：第 <b class="hl">#${rank} 名</b> (${targetStandings[S.teamId].wins} 勝 ${targetStandings[S.teamId].losses} 敗)`);
+      if (rank <= 4) {
+        card('good', '🎉 二軍晉級季後賽！', '恭喜！二隊成功殺入二軍季後賽四強！我們將在二軍準決賽中迎戰強敵。');
+        season.stage = 'PLAYOFFS_SEMI';
+        choose('二軍例行賽結算', [{ t: '開啟二軍季後賽準決賽 BO5 ▸', main: true, f: () => playSeasonStep() }]);
+      } else {
+        card('bad', '❌ 二軍無緣季後賽', '遺憾！二隊未能進入二軍季後賽四強，二軍賽季到此結束。');
+        season.stage = 'ELIMINATED';
+        choose('二軍例行賽結算', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone) }]);
+      }
     } else {
-      card('bad', '❌ 止步例行賽', '遺憾！隊伍因積分不足未能進入季後賽四強，無緣本次季後賽與世界大賽舞台。');
-      season.stage = 'ELIMINATED';
-      choose('例行賽結算', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone) }]);
+      card('info', '例行賽全部結束', `例行賽最終排名：第 <b class="hl">#${rank} 名</b> (${season.standings[S.teamId].wins} 勝 ${season.standings[S.teamId].losses} 敗)`);
+      if (rank <= 4) {
+        card('good', '🎉 晉級季後賽！', '恭喜隊伍成功殺入季後賽四強席位！我們將在準決賽中迎戰強敵。');
+        season.stage = 'PLAYOFFS_SEMI';
+        choose('例行賽結算', [{ t: '開啟季後賽準決賽 BO5 ▸', main: true, f: () => playSeasonStep() }]);
+      } else {
+        card('bad', '❌ 止步例行賽', '遺憾！隊伍因積分不足未能進入季後賽四強，無緣本次季後賽與世界大賽舞台。');
+        season.stage = 'ELIMINATED';
+        choose('例行賽結算', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone) }]);
+      }
     }
   }
 
@@ -2378,9 +2483,10 @@ function runProSplit(splitKey, onSplitDone) {
 
   function resolvePlayoffsSemi(won, wasManual) {
     const season = S.season;
-    const isPlayerStarter = S.rosterStatus === 'STARTER';
+    const isStarterOrAcademy = S.rosterStatus === 'STARTER' || S.rosterStatus === 'ACADEMY';
+    const isAcademy = S.rosterStatus === 'ACADEMY';
     
-    if (isPlayerStarter) {
+    if (isStarterOrAcademy) {
       if (wasManual) {
         S.stats.matchesPlayed += 4;
         S.stats.matchesWon += won ? 2 : 2;
@@ -2412,11 +2518,21 @@ function runProSplit(splitKey, onSplitDone) {
     }
     
     if (won) {
-      card('gold', '🏆 挺進總決賽！', '隊伍在準決賽 BO5 大獲全勝！成功擊敗對手，晉級 LCP 總決賽，我們距離冠軍只差一步之遙！');
-      season.stage = 'PLAYOFFS_FINAL';
-      choose('準決賽結束', [{ t: '進入 LCP 總決賽 ▸', main: true, f: () => playSeasonStep() }]);
+      if (isAcademy) {
+        card('gold', '🏆 二軍挺進總決賽！', '二隊在二軍準決賽 BO5 大獲全勝！成功擊敗對手，晉級二軍總決賽！');
+        season.stage = 'PLAYOFFS_FINAL';
+        choose('準決賽結束', [{ t: '進入二軍總決賽 ▸', main: true, f: () => playSeasonStep() }]);
+      } else {
+        card('gold', '🏆 挺進總決賽！', '隊伍在準決賽 BO5 大獲全勝！成功擊敗對手，晉級 LCP 總決賽，我們距離冠軍只差一步之遙！');
+        season.stage = 'PLAYOFFS_FINAL';
+        choose('準決賽結束', [{ t: '進入 LCP 總決賽 ▸', main: true, f: () => playSeasonStep() }]);
+      }
     } else {
-      card('bad', '季後賽準決賽出局', '在準決賽鏖戰五局惜敗，獲得本季季軍。');
+      if (isAcademy) {
+        card('bad', '二軍季後賽準決賽出局', '在準決賽鏖戰五局惜敗，獲得二軍季軍。');
+      } else {
+        card('bad', '季後賽準決賽出局', '在準決賽鏖戰五局惜敗，獲得本季季軍。');
+      }
       season.stage = 'PLAYOFFS_LOST';
       choose('準決賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone) }]);
     }
@@ -2424,9 +2540,10 @@ function runProSplit(splitKey, onSplitDone) {
 
   function resolvePlayoffsFinal(won, wasManual) {
     const season = S.season;
-    const isPlayerStarter = S.rosterStatus === 'STARTER';
+    const isStarterOrAcademy = S.rosterStatus === 'STARTER' || S.rosterStatus === 'ACADEMY';
+    const isAcademy = S.rosterStatus === 'ACADEMY';
     
-    if (isPlayerStarter) {
+    if (isStarterOrAcademy) {
       if (wasManual) {
         S.stats.matchesPlayed += 4;
         S.stats.matchesWon += won ? 2 : 2;
@@ -2459,21 +2576,33 @@ function runProSplit(splitKey, onSplitDone) {
     
     if (won) {
       S.stats.titlesWon += 1;
-      S.popularity += 25;
-      card('gold', `🏆 榮獲 ${splitInfo.name} 賽區總冠軍！`, '你在總決賽決勝局上演天秀繞後秒殺雙C！帶領全隊捧起冠軍銀盃，榮膺季後賽 MVP (FMVP)！');
-      if (splitInfo.qualifiesFor) {
-        season.stage = 'INTERNATIONAL';
-        choose('決賽結束', [{ t: `進軍 ${INTERNATIONAL_TOURNAMENTS[splitInfo.qualifiesFor].name} 國際賽 ▸`, main: true, f: () => playSeasonStep() }]);
-      } else { choose('決賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone) }]); }
+      if (isAcademy) {
+        S.popularity += 15;
+        card('gold', '🏆 榮獲二軍聯賽總冠軍！', '你率領二隊在總決賽打滿五局捧起二軍聯賽總冠軍銀盃！展現出卓越實力！');
+        choose('決賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone) }]);
+      } else {
+        S.popularity += 25;
+        card('gold', `🏆 榮獲 ${splitInfo.name} 賽區總冠軍！`, '你在總決賽決勝局上演天秀繞後秒殺雙C！帶領全隊捧起冠軍銀盃，榮膺季後賽 MVP (FMVP)！');
+        if (splitInfo.qualifiesFor) {
+          season.stage = 'INTERNATIONAL';
+          choose('決賽結束', [{ t: `進軍 ${INTERNATIONAL_TOURNAMENTS[splitInfo.qualifiesFor].name} 國際賽 ▸`, main: true, f: () => playSeasonStep() }]);
+        } else { choose('決賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone) }]); }
+      }
     } else {
-      S.popularity += 10;
-      card('good', '榮獲 LCP 總決賽亞軍！', '在總決賽打滿五局憾負，獲得賽區亞軍席位。');
-      const qualifiesFor = splitInfo.qualifiesFor;
-      const runnerUpQualifies = (qualifiesFor === 'MSI' || qualifiesFor === 'WORLDS');
-      if (qualifiesFor && runnerUpQualifies) {
-        season.stage = 'INTERNATIONAL';
-        choose('決賽結束', [{ t: `以亞軍身分出征 ${INTERNATIONAL_TOURNAMENTS[qualifiesFor].name} ▸`, main: true, f: () => playSeasonStep() }]);
-      } else { choose('決賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone) }]); }
+      if (isAcademy) {
+        S.popularity += 5;
+        card('good', '榮獲二軍總決賽亞軍！', '二隊在總決賽打滿五局惜敗，榮獲二軍亞軍席位。');
+        choose('決賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone) }]);
+      } else {
+        S.popularity += 10;
+        card('good', '榮獲 LCP 總決賽亞軍！', '在總決賽打滿五局憾負，獲得賽區亞軍席位。');
+        const qualifiesFor = splitInfo.qualifiesFor;
+        const runnerUpQualifies = (qualifiesFor === 'MSI' || qualifiesFor === 'WORLDS');
+        if (qualifiesFor && runnerUpQualifies) {
+          season.stage = 'INTERNATIONAL';
+          choose('決賽結束', [{ t: `以亞軍身分出征 ${INTERNATIONAL_TOURNAMENTS[qualifiesFor].name} ▸`, main: true, f: () => playSeasonStep() }]);
+        } else { choose('決賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone) }]); }
+      }
     }
   }
 
