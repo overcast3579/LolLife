@@ -1101,3 +1101,327 @@ body.big-text #modal-box p { font-size: 20px; }
     display: block;
   }
 }
+
+/* ==================== BP 選角與搜尋篩選器樣式 ==================== */
+.bp-board {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.bp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--panel2);
+  border: 1px solid var(--edge);
+  border-radius: min(var(--r), 6px);
+  padding: 6px 12px;
+}
+
+.bp-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.side-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.side-badge.blue {
+  background: #0070f3;
+  color: #fff;
+}
+
+.side-badge.red {
+  background: #ff0000;
+  color: #fff;
+}
+
+.bp-vs {
+  font-family: var(--disp);
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+}
+
+.bp-status {
+  text-align: center;
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 6px;
+  font-weight: 700;
+  animation: bp-pulse 2s infinite ease-in-out;
+}
+
+@keyframes bp-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; text-shadow: var(--glow); }
+}
+
+.bp-bans-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  margin: 8px 0;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px 8px;
+  border-radius: 4px;
+  align-items: center;
+}
+
+.blue-bans, .red-bans {
+  display: flex;
+  gap: 4px;
+}
+
+.red-bans {
+  justify-content: flex-end;
+}
+
+.ban-slot {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--panel2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8.5px;
+  font-family: var(--sans);
+  font-weight: 700;
+  overflow: hidden;
+  position: relative;
+}
+
+.ban-slot.banned {
+  border-color: #ff4d4f;
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.08);
+}
+
+.ban-slot.banned::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 1px;
+  background: #ff4d4f;
+  transform: rotate(45deg);
+}
+
+.bans-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+}
+
+.bp-picks-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.blue-picks, .red-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pick-slot {
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 4px 8px;
+  background: var(--panel2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  min-height: 28px;
+}
+
+.pick-slot.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 40%, transparent);
+  animation: pick-pulse-anim 1.5s infinite;
+}
+
+@keyframes pick-pulse-anim {
+  0%, 100% { border-color: var(--edge); }
+  50% { border-color: var(--accent); }
+}
+
+.pick-slot .role-badge {
+  font-size: 8.5px;
+  color: var(--dim);
+  font-family: var(--mono);
+}
+
+.pick-slot .champ-name {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pick-slot .player-indicator {
+  font-size: 8px;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  padding: 0 2px;
+  border-radius: 2px;
+  margin-left: 4px;
+  font-weight: 700;
+}
+
+.bp-divider {
+  border: 0;
+  border-top: 1px solid var(--edge);
+  margin: 10px 0;
+}
+
+.picker-header {
+  font-family: var(--head);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.picker-search-bar input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.picker-search-bar input:focus {
+  border-color: var(--accent);
+}
+
+.picker-filter-row {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  margin-top: 6px;
+  padding-bottom: 2px;
+  scrollbar-width: none; /* Firefox */
+}
+
+.picker-filter-row::-webkit-scrollbar {
+  display: none; /* Safari & Chrome */
+}
+
+.filter-chip {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  color: var(--dim);
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.filter-chip.on {
+  background: rgba(0, 242, 254, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.picker-sort-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.picker-coach-box {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: rgba(229, 184, 105, 0.08);
+  border-left: 3px solid var(--gold);
+  border-radius: 4px;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 5px;
+  max-height: 140px;
+  overflow-y: auto;
+  background: var(--panel2);
+  padding: 6px;
+  border-radius: var(--r);
+  margin-top: 8px;
+  border: 1px solid var(--edge);
+}
+
+.picker-champ-card {
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  padding: 4px;
+  border-radius: var(--r);
+  cursor: pointer;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 42px;
+  transition: all 0.1s ease;
+}
+
+.picker-champ-card:hover {
+  border-color: var(--accent);
+}
+
+.picker-champ-card.selected {
+  border-color: var(--accent);
+  background: rgba(0, 242, 254, 0.1);
+}
+
+.picker-champ-card .name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.picker-champ-card .desc {
+  font-size: 8.5px;
+  color: var(--dim);
+  margin-top: 1px;
+}
+
+.picker-champ-card.off-meta .desc {
+  color: var(--gold);
+}
+
+.picker-champ-card.disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+

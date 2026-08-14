@@ -453,71 +453,496 @@ function renderTimeline() {
 }
 
 // ==================== 1. BP 選角與 7 階段實時賽況對決 ====================
-function interactiveBPDraft(oppTeam, onDraftFinished) {
+function interactiveBPDraft(oppTeam, meta, onDraftFinished) {
   const act = $('act');
   act.style.display = 'block';
 
-  // 取得玩家位置可選英雄
-  const roleChamps = CHAMPIONS.filter(c => c.primaryRole === S.pos || c.roles.includes(S.pos));
-  const offMetaChamps = CHAMPIONS.filter(c => c.primaryRole !== S.pos && !c.roles.includes(S.pos)).slice(0, 8);
-  const candidates = [...roleChamps, ...offMetaChamps];
+  // 1. Initialize Side Selection
+  const isPlayerBlue = rng.next() < 0.5;
+  const playerTeamName = getTeamById(S.teamId)?.shortName || S.team;
+  const oppTeamName = oppTeam.shortName || oppTeam.name;
+  const blueTeamName = isPlayerBlue ? playerTeamName : oppTeamName;
+  const redTeamName = isPlayerBlue ? oppTeamName : playerTeamName;
 
-  let chosenChampId = roleChamps[0]?.id || CHAMPIONS[0].id;
+  // 2. Initialize Pick Order (Roles)
+  const bluePicksRoles = ['TOP', 'JUG', 'MID', 'ADC', 'SUP'].sort(() => rng.next() - 0.5);
+  const redPicksRoles = ['TOP', 'JUG', 'MID', 'ADC', 'SUP'].sort(() => rng.next() - 0.5);
 
-  const renderBPScreen = () => {
-    const champObj = getChampionById(chosenChampId);
-    const masteryPts = S.masteries[chosenChampId] || 0;
-    const masteryInfo = getMasteryInfo(masteryPts);
-    const isOffMeta = champObj.primaryRole !== S.pos && !champObj.roles.includes(S.pos);
+  // 3. Initialize Draft State
+  const blueBans = [];
+  const redBans = [];
+  const bluePicks = {};
+  const redPicks = {};
+  const allPicked = new Set();
+  const allBanned = new Set();
+  
+  let currentStepIndex = 0;
+  
+  // 4. Initialize Picker Filters
+  let searchVal = '';
+  let posFilter = 'ALL';
+  let tagFilter = 'ALL';
+  let sortMethod = 'meta';
+  let selectedChampId = null;
 
-    let advice = '【常規戰力】教練點頭認可，發揮基準強度。';
-    if (isOffMeta) {
-      advice = `【⚠️ 非主流黑科技警告】教練皺起眉頭：「${champObj.name} 打 ${S.pos} 缺乏傳統前排或控制，若對線劣勢容錯極低！」`;
-    } else if (masteryInfo.level >= 5) {
-      advice = `【🔥 招牌絕活】教練全力支持：「鎖下你的招牌 ${champObj.name}，打出極限上限！」`;
+  const draftSteps = [
+    { type: 'ban', side: 'blue', idx: 0 },
+    { type: 'ban', side: 'red', idx: 0 },
+    { type: 'ban', side: 'blue', idx: 1 },
+    { type: 'ban', side: 'red', idx: 1 },
+    { type: 'ban', side: 'blue', idx: 2 },
+    { type: 'ban', side: 'red', idx: 2 },
+    
+    { type: 'pick', side: 'blue', idx: 0 }, // Pick 1
+    { type: 'pick', side: 'red', idx: 0 },  // Pick 1
+    { type: 'pick', side: 'red', idx: 1 },  // Pick 2
+    { type: 'pick', side: 'blue', idx: 1 }, // Pick 2
+    { type: 'pick', side: 'blue', idx: 2 }, // Pick 3
+    { type: 'pick', side: 'red', idx: 2 },  // Pick 3
+    
+    { type: 'ban', side: 'red', idx: 3 },
+    { type: 'ban', side: 'blue', idx: 3 },
+    { type: 'ban', side: 'red', idx: 4 },
+    { type: 'ban', side: 'blue', idx: 4 },
+    
+    { type: 'pick', side: 'red', idx: 3 },  // Pick 4
+    { type: 'pick', side: 'blue', idx: 3 }, // Pick 4
+    { type: 'pick', side: 'blue', idx: 4 }, // Pick 5
+    { type: 'pick', side: 'red', idx: 4 },  // Pick 5
+  ];
+
+  function runDraftStep() {
+    if (currentStepIndex >= draftSteps.length) {
+      renderFinalRosters();
+      return;
     }
-
-    act.innerHTML = `
-      <div class="title">⚔️ 召喚峽谷 BP 選角階段 (對手：${oppTeam.name})</div>
-      <div style="font-size:12px;color:var(--dim);margin-bottom:6px;">請為本局系列賽鎖定出戰英雄（支援非主流奇招）：</div>
+    
+    const step = draftSteps[currentStepIndex];
+    const isPlayerPick = (step.type === 'pick' && 
+      ((step.side === 'blue' && isPlayerBlue && bluePicksRoles[step.idx] === S.pos) ||
+       (step.side === 'red' && !isPlayerBlue && redPicksRoles[step.idx] === S.pos)));
+       
+    if (isPlayerPick) {
+      updateUI(true);
+      return;
+    }
+    
+    updateUI(false);
+    
+    setTimeout(() => {
+      if (step.type === 'ban') {
+        const metaChamps = [];
+        if (meta && meta.sTierChampions) {
+          Object.values(meta.sTierChampions).flat().forEach(cId => {
+            if (getChampionById(cId)) metaChamps.push(cId);
+          });
+        }
+        const poolForBan = metaChamps.length > 0 ? metaChamps : CHAMPIONS.map(c => c.id);
+        const availableBans = poolForBan.filter(cId => !allBanned.has(cId) && !allPicked.has(cId));
+        let banChampId = availableBans.length > 0 ? rng.choice(availableBans) : CHAMPIONS.find(c => !allBanned.has(c.id) && !allPicked.has(c.id))?.id;
+        
+        if (step.side === 'blue') {
+          blueBans.push(banChampId);
+        } else {
+          redBans.push(banChampId);
+        }
+        allBanned.add(banChampId);
+        
+      } else if (step.type === 'pick') {
+        const role = (step.side === 'blue') ? bluePicksRoles[step.idx] : redPicksRoles[step.idx];
+        const roleChamps = CHAMPIONS.filter(c => !allBanned.has(c.id) && !allPicked.has(c.id) && (c.primaryRole === role || c.roles.includes(role)));
+        let pickChampId;
+        if (roleChamps.length > 0) {
+          const metaRoleChamps = roleChamps.filter(c => meta && meta.sTierChampions && Object.values(meta.sTierChampions).flat().includes(c.id));
+          if (metaRoleChamps.length > 0 && rng.next() < 0.7) {
+            pickChampId = rng.choice(metaRoleChamps).id;
+          } else {
+            pickChampId = rng.choice(roleChamps).id;
+          }
+        } else {
+          pickChampId = CHAMPIONS.find(c => !allBanned.has(c.id) && !allPicked.has(c.id))?.id;
+        }
+        
+        if (step.side === 'blue') {
+          bluePicks[role] = pickChampId;
+        } else {
+          redPicks[role] = pickChampId;
+        }
+        allPicked.add(pickChampId);
+      }
       
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(95px,1fr));gap:6px;max-height:160px;overflow-y:auto;background:var(--panel2);padding:8px;border-radius:var(--r);margin-bottom:8px;">
-        ${candidates.map(c => {
-          const pts = S.masteries[c.id] || 0;
-          const mi = getMasteryInfo(pts);
-          const sel = c.id === chosenChampId;
-          const off = c.primaryRole !== S.pos && !c.roles.includes(S.pos);
-          return `
-            <div class="bp-champ-btn" data-id="${c.id}" style="border:1px solid ${sel ? 'var(--accent)' : 'var(--edge)'};background:${sel ? 'rgba(0,242,254,0.12)' : 'var(--panel)'};padding:6px;border-radius:4px;cursor:pointer;text-align:center;">
-              <div style="font-size:12px;font-weight:700;color:${sel ? 'var(--accent)' : 'var(--text)'};">${c.name}</div>
-              <div style="font-size:9.5px;color:${off ? 'var(--gold)' : 'var(--dim)'};">${off ? '非主流' : mi.name}</div>
+      currentStepIndex++;
+      runDraftStep();
+    }, 350);
+  }
+
+  function updateUI(isPlayerTurn) {
+    const step = draftSteps[currentStepIndex];
+    let statusText = '';
+    if (step) {
+      const teamName = step.side === 'blue' ? blueTeamName : redTeamName;
+      if (step.type === 'ban') {
+        statusText = `正在進行：${step.idx >= 3 ? '第二階段' : '第一階段'} Ban 英雄 (${teamName})`;
+      } else {
+        const role = step.side === 'blue' ? bluePicksRoles[step.idx] : redPicksRoles[step.idx];
+        statusText = isPlayerTurn ? `🔴 輪到你選擇英雄！` : `正在進行：選角中 (${teamName} - ${POS_NAMES[role] || role})`;
+      }
+    }
+    
+    act.innerHTML = `
+      <div class="bp-board">
+        <div class="bp-header">
+          <div class="bp-team blue">
+            <span class="side-badge blue">BLUE</span>
+            <span class="team-name" style="color:#00f2fe;">${blueTeamName}</span>
+          </div>
+          <div class="bp-vs">VS</div>
+          <div class="bp-team red">
+            <span class="team-name" style="color:#ff4d4f;">${redTeamName}</span>
+            <span class="side-badge red">RED</span>
+          </div>
+        </div>
+        
+        <div class="bp-status">${statusText}</div>
+        
+        <div class="bp-bans-row">
+          <div class="blue-bans">
+            ${Array.from({ length: 5 }).map((_, i) => {
+              const champId = blueBans[i];
+              const champ = champId ? getChampionById(champId) : null;
+              return `<div class="ban-slot ${champ ? 'banned' : ''}" title="${champ ? champ.name : ''}">${champ ? champ.name.slice(0, 2) : ''}</div>`;
+            }).join('')}
+          </div>
+          <div class="bans-label">BANS</div>
+          <div class="red-bans">
+            ${Array.from({ length: 5 }).map((_, i) => {
+              const champId = redBans[i];
+              const champ = champId ? getChampionById(champId) : null;
+              return `<div class="ban-slot ${champ ? 'banned' : ''}" title="${champ ? champ.name : ''}">${champ ? champ.name.slice(0, 2) : ''}</div>`;
+            }).join('')}
+          </div>
+        </div>
+        
+        <div class="bp-picks-container">
+          <div class="blue-picks">
+            ${bluePicksRoles.map((role, i) => {
+              const isTurn = (step && step.type === 'pick' && step.side === 'blue' && step.idx === i);
+              const isPlayerSlot = (isPlayerBlue && role === S.pos);
+              const champId = bluePicks[role];
+              const champ = champId ? getChampionById(champId) : null;
+              return `
+                <div class="pick-slot ${isTurn ? 'active' : ''}">
+                  <span class="role-badge">${POS_NAMES[role] ? POS_NAMES[role].slice(0, 2) : role}</span>
+                  <span class="champ-name" style="${isTurn ? 'color:var(--accent); font-weight:bold;' : ''}">${champ ? champ.name : (isTurn ? '選角中...' : '---')}</span>
+                  ${isPlayerSlot ? '<span class="player-indicator">YOU</span>' : ''}
+                </div>
+              `;
+            }).join('')}
+          </div>
+          <div class="red-picks">
+            ${redPicksRoles.map((role, i) => {
+              const isTurn = (step && step.type === 'pick' && step.side === 'red' && step.idx === i);
+              const isPlayerSlot = (!isPlayerBlue && role === S.pos);
+              const champId = redPicks[role];
+              const champ = champId ? getChampionById(champId) : null;
+              return `
+                <div class="pick-slot ${isTurn ? 'active' : ''}">
+                  <span class="champ-name" style="${isTurn ? 'color:var(--accent); font-weight:bold;' : ''}">${champ ? champ.name : (isTurn ? '選角中...' : '---')}</span>
+                  <span class="role-badge">${POS_NAMES[role] ? POS_NAMES[role].slice(0, 2) : role}</span>
+                  ${isPlayerSlot ? '<span class="player-indicator">YOU</span>' : ''}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+        
+        <div id="bp-picker" style="display: ${isPlayerTurn ? 'block' : 'none'};">
+          <hr class="bp-divider">
+          <div class="picker-header">🔴 輪到你選角 (安排順位：${bluePicksRoles.indexOf(S.pos) === 0 || redPicksRoles.indexOf(S.pos) === 0 ? '先手首選' : bluePicksRoles.indexOf(S.pos) >= 3 || redPicksRoles.indexOf(S.pos) >= 3 ? '後手反制' : '常規選角'})</div>
+          
+          <div class="picker-search-bar">
+            <input type="text" id="picker-search-input" placeholder="🔍 搜尋英雄名稱...">
+          </div>
+          
+          <div class="picker-filter-row" id="picker-pos-filters">
+            <button class="filter-chip ${posFilter === 'ALL' ? 'on' : ''}" data-pos="ALL">全部</button>
+            <button class="filter-chip ${posFilter === 'TOP' ? 'on' : ''}" data-pos="TOP">上路</button>
+            <button class="filter-chip ${posFilter === 'JUG' ? 'on' : ''}" data-pos="JUG">打野</button>
+            <button class="filter-chip ${posFilter === 'MID' ? 'on' : ''}" data-pos="MID">中路</button>
+            <button class="filter-chip ${posFilter === 'ADC' ? 'on' : ''}" data-pos="ADC">下路</button>
+            <button class="filter-chip ${posFilter === 'SUP' ? 'on' : ''}" data-pos="SUP">輔助</button>
+          </div>
+
+          <div class="picker-filter-row" id="picker-tag-filters">
+            <button class="filter-chip ${tagFilter === 'ALL' ? 'on' : ''}" data-tag="ALL">全部類型</button>
+            <button class="filter-chip ${tagFilter === 'teamfight' ? 'on' : ''}" data-tag="teamfight">團戰</button>
+            <button class="filter-chip ${tagFilter === 'splitpush' ? 'on' : ''}" data-tag="splitpush">單帶</button>
+            <button class="filter-chip ${tagFilter === 'engage' ? 'on' : ''}" data-tag="engage">強開</button>
+            <button class="filter-chip ${tagFilter === 'poke' ? 'on' : ''}" data-tag="poke">消耗</button>
+            <button class="filter-chip ${tagFilter === 'tank' ? 'on' : ''}" data-tag="tank">坦克</button>
+            <button class="filter-chip ${tagFilter === 'assassin' ? 'on' : ''}" data-tag="assassin">刺客</button>
+            <button class="filter-chip ${tagFilter === 'enchanter' ? 'on' : ''}" data-tag="enchanter">保排</button>
+          </div>
+
+          <div class="picker-sort-row">
+            <span>排序方式：</span>
+            <div class="seg two" id="picker-sort-seg" style="margin-top:0;">
+              <button data-sort="meta" class="${sortMethod === 'meta' ? 'on' : ''}">版本強度</button>
+              <button data-sort="mastery" class="${sortMethod === 'mastery' ? 'on' : ''}">個人熟練度</button>
             </div>
-          `;
-        }).join('')}
-      </div>
+          </div>
 
-      <div style="font-size:12px;background:rgba(0,0,0,0.3);padding:8px 10px;border-radius:var(--r);border-left:3px solid ${isOffMeta ? 'var(--gold)' : 'var(--accent)'};margin-bottom:10px;">
-        <strong>當前選擇：${champObj.name} (${champObj.title})</strong> · 熟練度：${masteryInfo.name} (${masteryPts}點)<br>
-        <span style="color:var(--dim);">${advice}</span>
-      </div>
+          <div class="picker-coach-box" id="picker-coach-advice"></div>
 
-      <button class="btn main" id="btn-lock-pick" style="text-align:center;">🔒 鎖定英雄，進入比賽決策 ▸</button>
+          <div class="picker-grid" id="picker-candidates-grid"></div>
+
+          <button class="btn main" id="btn-lock-champ" ${selectedChampId ? '' : 'disabled'} style="text-align:center;">🔒 鎖定英雄</button>
+        </div>
+      </div>
     `;
+    
+    if (isPlayerTurn) {
+      hookPickerEvents();
+      renderCandidatesList();
+      updateCoachAdvice();
+      const searchInput = $('picker-search-input');
+      if (searchInput && searchVal) {
+        searchInput.value = searchVal;
+        searchInput.focus();
+      }
+    }
+  }
 
-    act.querySelectorAll('.bp-champ-btn').forEach(btn => {
+  function hookPickerEvents() {
+    const searchInput = $('picker-search-input');
+    if (searchInput) {
+      searchInput.oninput = () => {
+        searchVal = searchInput.value;
+        renderCandidatesList();
+      };
+    }
+    
+    const posButtons = document.querySelectorAll('#picker-pos-filters .filter-chip');
+    posButtons.forEach(btn => {
       btn.onclick = () => {
-        chosenChampId = btn.getAttribute('data-id');
-        renderBPScreen();
+        posButtons.forEach(b => b.classList.remove('on'));
+        btn.classList.add('on');
+        posFilter = btn.getAttribute('data-pos');
+        renderCandidatesList();
       };
     });
+    
+    const tagButtons = document.querySelectorAll('#picker-tag-filters .filter-chip');
+    tagButtons.forEach(btn => {
+      btn.onclick = () => {
+        tagButtons.forEach(b => b.classList.remove('on'));
+        btn.classList.add('on');
+        tagFilter = btn.getAttribute('data-tag');
+        renderCandidatesList();
+      };
+    });
+    
+    const sortButtons = document.querySelectorAll('#picker-sort-seg button');
+    sortButtons.forEach(btn => {
+      btn.onclick = () => {
+        sortButtons.forEach(b => b.classList.remove('on'));
+        btn.classList.add('on');
+        sortMethod = btn.getAttribute('data-sort');
+        renderCandidatesList();
+      };
+    });
+    
+    const lockBtn = $('btn-lock-champ');
+    if (lockBtn) {
+      lockBtn.onclick = () => {
+        if (selectedChampId) {
+          lockPlayerChoice();
+        }
+      };
+    }
+  }
 
-    $('btn-lock-pick').onclick = () => {
-      act.style.display = 'none';
-      run7PhaseMatch(oppTeam, chosenChampId, onDraftFinished);
+  function renderCandidatesList() {
+    let list = CHAMPIONS.filter(c => !allBanned.has(c.id) && !allPicked.has(c.id));
+    
+    if (searchVal) {
+      const q = searchVal.trim().toLowerCase();
+      list = list.filter(c => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || (c.title && c.title.toLowerCase().includes(q)));
+    }
+    
+    if (posFilter && posFilter !== 'ALL') {
+      list = list.filter(c => c.primaryRole === posFilter || c.roles.includes(posFilter));
+    }
+    
+    if (tagFilter && tagFilter !== 'ALL') {
+      list = list.filter(c => c.tags && c.tags.includes(tagFilter));
+    }
+    
+    list.sort((a, b) => {
+      if (sortMethod === 'mastery') {
+        const ptsA = S.masteries[a.id] || 0;
+        const ptsB = S.masteries[b.id] || 0;
+        return ptsB - ptsA;
+      } else {
+        const getMetaScore = (champ) => {
+          if (!meta || !meta.sTierChampions) return 0;
+          if (meta.sTierChampions.S?.includes(champ.id)) return 3;
+          if (meta.sTierChampions.A?.includes(champ.id)) return 2;
+          if (meta.sTierChampions.B?.includes(champ.id)) return 1;
+          return 0;
+        };
+        return getMetaScore(b) - getMetaScore(a);
+      }
+    });
+    
+    const grid = $('picker-candidates-grid');
+    if (!grid) return;
+    
+    grid.innerHTML = list.map(c => {
+      const isSelected = (c.id === selectedChampId);
+      const pts = S.masteries[c.id] || 0;
+      const mi = getMasteryInfo(pts);
+      const isOffMeta = c.primaryRole !== S.pos && !c.roles.includes(S.pos);
+      
+      let metaTag = '';
+      if (meta && meta.sTierChampions) {
+        if (meta.sTierChampions.S?.includes(c.id)) metaTag = '<span class="tag gold" style="font-size:8px;padding:0 3px;margin:0 2px;">T0</span>';
+        else if (meta.sTierChampions.A?.includes(c.id)) metaTag = '<span class="tag" style="color:var(--accent);font-size:8px;padding:0 3px;margin:0 2px;">T1</span>';
+        else if (meta.sTierChampions.B?.includes(c.id)) metaTag = '<span class="tag" style="color:var(--dim);font-size:8px;padding:0 3px;margin:0 2px;">T2</span>';
+      }
+      
+      return `
+        <div class="picker-champ-card ${isSelected ? 'selected' : ''} ${isOffMeta ? 'off-meta' : ''}" data-id="${c.id}">
+          <div class="name">${c.name}</div>
+          <div class="desc">${isOffMeta ? '非主流' : mi.name} ${metaTag}</div>
+        </div>
+      `;
+    }).join('');
+    
+    grid.querySelectorAll('.picker-champ-card').forEach(card => {
+      card.onclick = () => {
+        selectedChampId = card.getAttribute('data-id');
+        grid.querySelectorAll('.picker-champ-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        
+        const lockBtn = $('btn-lock-champ');
+        if (lockBtn) {
+          lockBtn.disabled = false;
+        }
+        
+        updateCoachAdvice();
+      };
+    });
+  }
+
+  function updateCoachAdvice() {
+    const box = $('picker-coach-advice');
+    if (!box) return;
+    
+    if (!selectedChampId) {
+      const recommended = CHAMPIONS.filter(c => !allBanned.has(c.id) && !allPicked.has(c.id) && (c.primaryRole === S.pos || c.roles.includes(S.pos)));
+      recommended.sort((a, b) => {
+        const getMetaScore = (champ) => {
+          if (!meta || !meta.sTierChampions) return 0;
+          if (meta.sTierChampions.S?.includes(champ.id)) return 3;
+          if (meta.sTierChampions.A?.includes(champ.id)) return 2;
+          return 0;
+        };
+        const scoreDiff = getMetaScore(b) - getMetaScore(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return (S.masteries[b.id] || 0) - (S.masteries[a.id] || 0);
+      });
+      
+      const recNames = recommended.slice(0, 3).map(c => c.name).join('、');
+      box.innerHTML = `📋 **教練團戰術室建議**：本局推薦搶下 <b class="hl">${recNames || '任意常規英雄'}</b>，較符合當前聯賽版本節奏。`;
+    } else {
+      const c = getChampionById(selectedChampId);
+      const pts = S.masteries[c.id] || 0;
+      const mi = getMasteryInfo(pts);
+      const isOffMeta = c.primaryRole !== S.pos && !c.roles.includes(S.pos);
+      
+      if (isOffMeta) {
+        box.innerHTML = `⚠️ **非主流黑科技警告**：教練皺起眉頭：「用 ${c.name} 打 ${POS_NAMES[S.pos] || S.pos} 缺乏陣容容錯率。如果前期崩盤，戰術體系將完全失衡，你確定嗎？」`;
+      } else if (mi.level >= 5) {
+        box.innerHTML = `🔥 **招牌絕活認可**：教練點頭微笑：「鎖下你的招牌絕活 ${c.name}！用你的熟練度撕裂敵方的防線吧！」`;
+      } else {
+        box.innerHTML = `👍 **陣容適配**：教練認可：「選擇 ${c.name} 是個紮實穩健的選擇，配合團隊打出常規節奏即可。」`;
+      }
+    }
+  }
+
+  function lockPlayerChoice() {
+    const role = S.pos;
+    if (isPlayerBlue) {
+      bluePicks[role] = selectedChampId;
+    } else {
+      redPicks[role] = selectedChampId;
+    }
+    
+    allPicked.add(selectedChampId);
+    
+    const selectedChamp = getChampionById(selectedChampId);
+    const isOffMeta = selectedChamp.primaryRole !== S.pos && !selectedChamp.roles.includes(S.pos);
+    if (isOffMeta) {
+      S.coachTrust = Math.max(0, S.coachTrust - 5);
+    }
+    
+    currentStepIndex++;
+    selectedChampId = null;
+    searchVal = '';
+    
+    runDraftStep();
+  }
+
+  function renderFinalRosters() {
+    const getTeamRosterHTML = (side, teamName, picksRoles, picks) => {
+      return `
+        <div style="font-size:12px;background:var(--panel2);border:1px solid var(--edge);border-radius:4px;padding:8px;">
+          <strong style="color:${side === 'blue' ? '#00f2fe' : '#ff4d4f'};">${teamName} 陣容：</strong>
+          <ul style="list-style:none;padding-left:0;margin-top:4px;line-height:1.6;">
+            ${picksRoles.map(role => {
+              const isPlayer = (side === 'blue' && isPlayerBlue && role === S.pos) || (side === 'red' && !isPlayerBlue && role === S.pos);
+              const champId = picks[role];
+              const champ = getChampionById(champId);
+              return `
+                <li style="display:flex;justify-content:space-between;gap:4px;">
+                  <span>${POS_NAMES[role] ? POS_NAMES[role].slice(0, 2) : role}：${isPlayer ? `<b>${S.inGameId} (YOU)</b>` : `AI`}</span>
+                  <span class="hl">${champ ? champ.name : '---'}</span>
+                </li>
+              `;
+            }).join('')}
+          </ul>
+        </div>
+      `;
     };
-  };
+    
+    act.innerHTML = `
+      <div class="title">⚔️ 召喚峽谷 雙方陣容已鎖定</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+        ${getTeamRosterHTML('blue', blueTeamName, bluePicksRoles, bluePicks)}
+        ${getTeamRosterHTML('red', redTeamName, redPicksRoles, redPicks)}
+      </div>
+      <button class="btn main" id="btn-start-fight" style="text-align:center;">⚔️ 鎖定陣容，進入召喚峽谷 ▸</button>
+    `;
+    
+    $('btn-start-fight').onclick = () => {
+      act.style.display = 'none';
+      const playerChosenChampId = isPlayerBlue ? bluePicks[S.pos] : redPicks[S.pos];
+      
+      const blueLineup = bluePicksRoles.map(role => `${POS_NAMES[role] ? POS_NAMES[role].slice(0,2) : role}: ${getChampionById(bluePicks[role])?.name || '未知'}`).join(' / ');
+      const redLineup = redPicksRoles.map(role => `${POS_NAMES[role] ? POS_NAMES[role].slice(0,2) : role}: ${getChampionById(redPicks[role])?.name || '未知'}`).join(' / ');
+      
+      card('info', '⚔️ 雙方陣容鎖定', `
+        <b>藍方 ${blueTeamName}</b>：${blueLineup}<br>
+        <b>紅方 ${redTeamName}</b>：${redLineup}
+      `);
+      
+      run7PhaseMatch(oppTeam, playerChosenChampId, onDraftFinished);
+    };
+  }
 
-  renderBPScreen();
+  // Start the BP draft!
+  runDraftStep();
 }
 
 // 7 階段戰術決策推進
@@ -823,7 +1248,7 @@ function runProSplit(splitKey, meta, onSplitDone) {
       main: true,
       s: '手動選擇英雄、黑科技戰術與關鍵時刻大招決策',
       f: () => {
-        interactiveBPDraft(nextOpp, (won) => {
+        interactiveBPDraft(nextOpp, meta, (won) => {
           proceedSplitPostMatch(splitKey, splitInfo, won, onSplitDone);
         });
       }
