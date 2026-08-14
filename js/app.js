@@ -1222,7 +1222,8 @@ function startNextProYear() {
 
   // 季前動態 Meta
   const meta = generateSplitMeta(rng, S.year, 'SPLIT_1');
-  card('info', `年度版本公布：${meta.patchTitle}`, `${meta.desc}<br>強勢 T0 英雄焦點：${Object.values(meta.sTierChampions).flat().map(id => getChampionById(id)?.name || id).slice(0, 4).join('、 ')}`);
+  const uniqueT0Champs = [...new Set(Object.values(meta.sTierChampions).flat())];
+  card('info', `年度版本公布：${meta.patchTitle}`, `${meta.desc}<br>強勢 T0 英雄焦點：${uniqueT0Champs.map(id => getChampionById(id)?.name || id).slice(0, 4).join('、 ')}`);
 
   // 季前特訓
   rollDice(4, `${S.age}歲 季前特訓加點`, () => {
@@ -1240,7 +1241,8 @@ function runProSplit(splitKey, onSplitDone) {
 
   // 1. Generate version meta
   const meta = generateSplitMeta(rng, S.year, splitKey);
-  card('info', `${splitInfo.name} 版本公布：${meta.patchTitle}`, `${meta.desc}<br>強勢 T0 英雄焦點：${Object.values(meta.sTierChampions).flat().map(id => getChampionById(id)?.name || id).slice(0, 4).join('、 ')}`);
+  const uniqueT0Champs = [...new Set(Object.values(meta.sTierChampions).flat())];
+  card('info', `${splitInfo.name} 版本公布：${meta.patchTitle}`, `${meta.desc}<br>強勢 T0 英雄焦點：${uniqueT0Champs.map(id => getChampionById(id)?.name || id).slice(0, 4).join('、 ')}`);
 
   // 2. Initialize Season Standings & Schedule if not initialized for this split
   const playerTeam = getTeamById(S.teamId) || TEAMS[0];
