@@ -2197,64 +2197,137 @@ function allocateSplitPoints(pointsEarned, onDone) {
     return;
   }
   
+  // Store original state to allow reset/undo
+  const origMechanics = S.ab.mechanics;
+  const origLaning = S.ab.laning;
+  const origMacro = S.ab.macro;
+  const origTeamfight = S.ab.teamfight;
+  const origChampPool = S.ab.championPool;
+  const origMental = S.ab.mental;
+  const origComm = S.ab.communication;
+  const origDiscipline = S.ab.discipline;
+  const origWrist = S.wristHealth;
+  const totalPoints = pointsEarned;
+  
+  let currentPoints = pointsEarned;
+
   function renderAllocationMenu() {
     board(1);
-    choose(`🎯 季末天賦加點 (可用點數: ${pointsEarned})`, [
+    choose(`🎯 季末天賦加點 (可用點數: ${currentPoints})`, [
       {
         t: `➕ 提升操作 (當前: ${S.ab.mechanics} / 上限: ${S.pot.mechanics})`,
-        s: '消耗 1 點數，提升 1 點操作基礎',
-        disabled: S.ab.mechanics >= S.pot.mechanics,
+        s: '操作基本功，影響對線擊殺與團戰極限秀機率',
+        disabled: currentPoints <= 0 || S.ab.mechanics >= S.pot.mechanics,
         f: () => {
           S.ab.mechanics++;
-          pointsEarned--;
+          currentPoints--;
+          renderAllocationMenu();
+        }
+      },
+      {
+        t: `➕ 提升對線 (當前: ${S.ab.laning} / 上限: ${S.pot.laning})`,
+        s: '對線細節與壓刀，影響前期發育與防 Gank 實力',
+        disabled: currentPoints <= 0 || S.ab.laning >= S.pot.laning,
+        f: () => {
+          S.ab.laning++;
+          currentPoints--;
           renderAllocationMenu();
         }
       },
       {
         t: `➕ 提升觀念 (當前: ${S.ab.macro} / 上限: ${S.pot.macro})`,
-        s: '消耗 1 點數，提升 1 點觀念大局觀',
-        disabled: S.ab.macro >= S.pot.macro,
+        s: '地圖大局觀、轉線與營運決策勝率',
+        disabled: currentPoints <= 0 || S.ab.macro >= S.pot.macro,
         f: () => {
           S.ab.macro++;
-          pointsEarned--;
+          currentPoints--;
+          renderAllocationMenu();
+        }
+      },
+      {
+        t: `➕ 提升團戰 (當前: ${S.ab.teamfight} / 上限: ${S.pot.teamfight})`,
+        s: '中後期 5v5 團戰走位與輸出/控制輸出勝率',
+        disabled: currentPoints <= 0 || S.ab.teamfight >= S.pot.teamfight,
+        f: () => {
+          S.ab.teamfight++;
+          currentPoints--;
+          renderAllocationMenu();
+        }
+      },
+      {
+        t: `➕ 提升英雄池 (當前: ${S.ab.championPool} / 上限: ${S.pot.championPool})`,
+        s: '英雄池深度，BP 階段取得優勢機率',
+        disabled: currentPoints <= 0 || S.ab.championPool >= S.pot.championPool,
+        f: () => {
+          S.ab.championPool++;
+          currentPoints--;
           renderAllocationMenu();
         }
       },
       {
         t: `➕ 提升心態 (當前: ${S.ab.mental} / 上限: ${S.pot.mental})`,
-        s: '消耗 1 點數，提升 1 點抗壓心理素質',
-        disabled: S.ab.mental >= S.pot.mental,
+        s: '抗壓與逆風局的判斷精準度，降低失誤機率',
+        disabled: currentPoints <= 0 || S.ab.mental >= S.pot.mental,
         f: () => {
           S.ab.mental++;
-          pointsEarned--;
+          currentPoints--;
           renderAllocationMenu();
         }
       },
       {
         t: `➕ 提升團隊溝通 (當前: ${S.ab.communication} / 上限: ${S.pot.communication})`,
-        s: '消耗 1 點數，提升 1 點隊友默契配合與指揮溝通力',
-        disabled: S.ab.communication >= S.pot.communication,
+        s: '隊友默契配合與指揮溝通力，提升隊伍整體表現',
+        disabled: currentPoints <= 0 || S.ab.communication >= S.pot.communication,
         f: () => {
           S.ab.communication++;
-          pointsEarned--;
+          currentPoints--;
+          renderAllocationMenu();
+        }
+      },
+      {
+        t: `➕ 提升職業紀律 (當前: ${S.ab.discipline} / 上限: ${S.pot.discipline})`,
+        s: '選手職業操守與生活作息規律性',
+        disabled: currentPoints <= 0 || S.ab.discipline >= S.pot.discipline,
+        f: () => {
+          S.ab.discipline++;
+          currentPoints--;
           renderAllocationMenu();
         }
       },
       {
         t: `➕ 療養手腕健康 (當前: ${S.wristHealth}%)`,
-        s: '消耗 1 點數，恢復 3% 手腕健康度',
-        disabled: S.wristHealth >= 100,
+        s: '恢復 3% 手腕健康度，防止手腕傷病與強制下放替補',
+        disabled: currentPoints <= 0 || S.wristHealth >= 100,
         f: () => {
           S.wristHealth = Math.min(100, S.wristHealth + 3);
-          pointsEarned--;
+          currentPoints--;
+          renderAllocationMenu();
+        }
+      },
+      {
+        t: '🔄 重置分配 (退回點數)',
+        warn: true,
+        disabled: currentPoints === totalPoints,
+        s: '將所有屬性回復至本次分配前狀態，重新分配',
+        f: () => {
+          S.ab.mechanics = origMechanics;
+          S.ab.laning = origLaning;
+          S.ab.macro = origMacro;
+          S.ab.teamfight = origTeamfight;
+          S.ab.championPool = origChampPool;
+          S.ab.mental = origMental;
+          S.ab.communication = origComm;
+          S.ab.discipline = origDiscipline;
+          S.wristHealth = origWrist;
+          currentPoints = totalPoints;
           renderAllocationMenu();
         }
       },
       {
         t: '◀ 確定完成分配',
         main: true,
-        disabled: pointsEarned > 0, 
-        s: pointsEarned > 0 ? `請先分配完剩餘的 ${pointsEarned} 點數` : '完成加點並進入下一階段',
+        disabled: currentPoints > 0, 
+        s: currentPoints > 0 ? `請先分配完剩餘的 ${currentPoints} 點數` : '確認完成屬性分配，進入下一階段',
         f: () => {
           onDone();
         }
