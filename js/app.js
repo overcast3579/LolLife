@@ -209,15 +209,15 @@ function playerType() {
 function addAb(k, v) {
   if (!S || !(k in S.ab)) return 0;
   const o = S.ab[k];
-  if (v < 0) { S.ab[k] = Math.max(20, Math.min(80, o + v)); return S.ab[k] - o; }
+  if (v < 0) { S.ab[k] = Math.max(20, Math.min(99, o + v)); return S.ab[k] - o; }
   let cur = o, bud = v + (S.carry[k] || 0);
   const pk = S.pot[k] || 75;
-  while (bud > 0 && cur < 80) {
-    let cost = cur >= 70 ? 4 : cur >= 60 ? 2 : 1;
+  while (bud > 0 && cur < 99) {
+    let cost = cur >= 60 ? 4 : cur >= 50 ? 2 : 1;
     if (cur >= pk) cost *= 3;
     if (bud >= cost) { bud -= cost; cur++; } else break;
   }
-  S.carry[k] = cur >= 80 ? 0 : bud;
+  S.carry[k] = cur >= 99 ? 0 : bud;
   S.ab[k] = cur;
   return cur - o;
 }
@@ -225,7 +225,7 @@ function addAb(k, v) {
 function abCost(k) {
   if (!S) return 1;
   const cur = S.ab[k], pk = S.pot[k] || 75;
-  let c = cur >= 70 ? 4 : cur >= 60 ? 2 : 1;
+  let c = cur >= 60 ? 4 : cur >= 50 ? 2 : 1;
   if (cur >= pk) c *= 3;
   return c;
 }
@@ -363,11 +363,11 @@ function rollDice(count = 4, label = '季前特訓加點', onComplete) {
         ${Object.keys(ABL).map(k => {
           const cur = S.ab[k];
           const pot = S.pot[k] || 75;
-          const pct = Math.min(100, Math.round((cur / 80) * 100));
-          const potPct = Math.min(100, Math.round((pot / 80) * 100));
+          const pct = Math.min(100, Math.round((cur / 99) * 100));
+          const potPct = Math.min(100, Math.round((pot / 99) * 100));
           const cost = abCost(k);
           const cr = (S.carry && S.carry[k]) || 0;
-          const cap = cur >= 80;
+          const cap = cur >= 99;
           return `
             <div class="abrow${cap ? ' capped' : ''}" data-key="${k}">
               <div class="nm">${ABL[k]}</div>
@@ -404,7 +404,7 @@ function rollDice(count = 4, label = '季前特訓加點', onComplete) {
       row.onclick = () => {
         if (remaining() <= 0) return;
         const k = row.getAttribute('data-key');
-        if (S.ab[k] >= 80) return;
+        if (S.ab[k] >= 99) return;
 
         const amt = dice[idx];
         const prevCarry = (S.carry && S.carry[k]) || 0;
@@ -2879,11 +2879,12 @@ function allocateSplitPoints(pointsEarned, onDone) {
 
   // Store original state to allow reset/undo
   const origAb = { ...S.ab };
+  const origCarry = JSON.parse(JSON.stringify(S.carry || {}));
   const origWrist = S.wristHealth;
   const totalPoints = pointsEarned;
   
   let currentPoints = pointsEarned;
-  const hist = []; // [{ key, got }]
+  const hist = []; // [{ ab, carry, wristHealth, currentPoints }]
 
   function renderAlloc() {
     board(1);
@@ -2903,9 +2904,11 @@ function allocateSplitPoints(pointsEarned, onDone) {
         ${Object.keys(ABL).map(k => {
           const cur = S.ab[k];
           const pot = S.pot[k] || 75;
-          const pct = Math.min(100, Math.round((cur / 80) * 100));
-          const potPct = Math.min(100, Math.round((pot / 80) * 100));
-          const cap = cur >= pot;
+          const pct = Math.min(100, Math.round((cur / 99) * 100));
+          const potPct = Math.min(100, Math.round((pot / 99) * 100));
+          const cost = abCost(k);
+          const cr = (S.carry && S.carry[k]) || 0;
+          const cap = cur >= 99;
           return `
             <div class="abrow${cap ? ' capped' : ''}" data-key="${k}">
               <div class="nm">${ABL[k]}</div>
@@ -2915,6 +2918,7 @@ function allocateSplitPoints(pointsEarned, onDone) {
               </div>
               <div class="val">
                 ${cur}<small style="opacity:0.5;">/${pot}</small>
+                ${cost > 1 ? `<span style="display:block;opacity:0.5;font-size:10.5px;margin-top:-2px;">${cr}/${cost}</span>` : ''}
               </div>
             </div>
           `;
@@ -2961,15 +2965,30 @@ function allocateSplitPoints(pointsEarned, onDone) {
         
         if (k === 'wrist') {
           if (S.wristHealth >= 100) return;
+          
+          hist.push({
+            ab: JSON.parse(JSON.stringify(S.ab)),
+            carry: JSON.parse(JSON.stringify(S.carry || {})),
+            wristHealth: S.wristHealth,
+            currentPoints: currentPoints
+          });
+          
           S.wristHealth = Math.min(100, S.wristHealth + 3);
-          hist.push({ key: 'wrist', got: 3 });
+          currentPoints--;
         } else {
-          if (S.ab[k] >= S.pot[k]) return;
-          S.ab[k]++;
-          hist.push({ key: k, got: 1 });
+          if (S.ab[k] >= 99) return;
+          
+          hist.push({
+            ab: JSON.parse(JSON.stringify(S.ab)),
+            carry: JSON.parse(JSON.stringify(S.carry || {})),
+            wristHealth: S.wristHealth,
+            currentPoints: currentPoints
+          });
+          
+          addAb(k, 1);
+          currentPoints--;
         }
         
-        currentPoints--;
         board(1);
         renderAlloc();
       };
@@ -2982,6 +3001,7 @@ function allocateSplitPoints(pointsEarned, onDone) {
         Object.keys(origAb).forEach(k => {
           S.ab[k] = origAb[k];
         });
+        S.carry = JSON.parse(JSON.stringify(origCarry));
         S.wristHealth = origWrist;
         currentPoints = totalPoints;
         hist.length = 0; // clear history
@@ -2995,12 +3015,10 @@ function allocateSplitPoints(pointsEarned, onDone) {
     if (btnUndo && hist.length > 0) {
       btnUndo.onclick = () => {
         const last = hist.pop();
-        if (last.key === 'wrist') {
-          S.wristHealth -= last.got;
-        } else {
-          S.ab[last.key] -= last.got;
-        }
-        currentPoints++;
+        S.ab = last.ab;
+        S.carry = last.carry;
+        S.wristHealth = last.wristHealth;
+        currentPoints = last.currentPoints;
         board(1);
         renderAlloc();
       };
@@ -3331,32 +3349,32 @@ function initApp() {
         
         <div style="margin-bottom: 12px; background: rgba(0, 242, 254, 0.05); border-radius: var(--r); border-left: 3px solid var(--accent); padding: 8px 12px;">
           <strong style="color: var(--accent);">🔄 年度週期概述</strong><br>
-          <span style="font-size: 12px; color: var(--text);">職業聯賽一整年固定分為三個賽季（Split 1, 2, 3）。每個賽季例行賽打完，前 4 名晉級季後賽，獲勝可獲得對應的國際賽事門票。年底為轉會期，隨後邁入下一年。</span>
+          <span style="font-size: 12px; color: var(--text);">職業聯賽一整年固定分為春季賽、夏季賽與秋季賽。每個賽季例行賽打完，前 4 名晉級季後賽，獲勝可獲得對應的國際賽事門票。年底為轉會期，隨後邁入下一年。</span>
         </div>
 
         <div style="margin-bottom: 12px;">
           <strong>1. 季前準備與自主特訓</strong><br>
-          <span style="font-size: 12px; color: var(--dim);">每年首個賽季開啟前，系統會分發特訓加點，您可進行自主特訓，提升您喜愛的英雄熟練度。</span>
+          <span style="font-size: 12px; color: var(--dim);">每年春季賽開啟前，系統會分發特訓加點，您可進行自主特訓，提升您喜愛的英雄熟練度。</span>
         </div>
 
         <div style="margin-bottom: 12px;">
-          <strong>2. 第一賽季 (Split 1)</strong><br>
+          <strong>2. 春季賽 (Spring Split)</strong><br>
           <span style="font-size: 12px; color: var(--dim);">• 例行賽：單循環賽事（LCP 共 7 輪 / LCK&LPL 為 5 輪）。<br>• 季後賽：例行賽前 4 名進行淘汰賽。<br>• 國際賽：<b>冠軍隊伍</b>將代表賽區出戰 <b>First Stand 國際大賽</b>。</span>
         </div>
 
         <div style="margin-bottom: 12px;">
-          <strong>3. 第二賽季 (Split 2)</strong><br>
+          <strong>3. 夏季賽 (Summer Split)</strong><br>
           <span style="font-size: 12px; color: var(--dim);">• 例行賽與季後賽形式相同。<br>• 國際賽：<b>冠軍與亞軍（前 2 名）</b>代表賽區出征 <b>MSI 季中邀請賽</b>。</span>
         </div>
 
         <div style="margin-bottom: 12px;">
-          <strong>4. 第三賽季 (Split 3)</strong><br>
+          <strong>4. 秋季賽 (Autumn Split)</strong><br>
           <span style="font-size: 12px; color: var(--dim);">• 例行賽與季後賽形式相同。<br>• 國際賽：<b>冠軍與亞軍（前 2 名）</b>代表賽區晉級 <b>世界大賽 (Worlds)</b>，爭奪全球總冠軍最高榮耀！</span>
         </div>
 
         <div style="margin-bottom: 12px;">
           <strong>5. 季末轉會窗口 (Off-season)</strong><br>
-          <span style="font-size: 12px; color: var(--dim);">第三賽季國際賽結束後，進入轉會期。您可以選擇與原隊續約、尋求 LPL/LCK 頂級豪強合約，或在達成傳奇成就時選擇光榮退役。</span>
+          <span style="font-size: 12px; color: var(--dim);">秋季賽國際賽結束後，進入轉會期。您可以選擇與原隊續約、尋求 LPL/LCK 頂級豪強合約，或在達成傳奇成就時選擇光榮退役。</span>
         </div>
 
         <button class="btn main" id="md-guide-close" style="text-align:center; margin-top:15px; width: 100%;">我知道了</button>

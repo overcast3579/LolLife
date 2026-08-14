@@ -132,8 +132,8 @@ export class UIRenderer {
       containerBars.innerHTML = STAT_KEYS.map(key => {
         const val = player.stats[key] || 20;
         const pot = player.potentials[key] || 75;
-        const pct = Math.min(100, Math.round((val / 80) * 100));
-        const potPct = Math.min(100, Math.round((pot / 80) * 100));
+        const pct = Math.min(100, Math.round((val / 99) * 100));
+        const potPct = Math.min(100, Math.round((pot / 99) * 100));
 
         return `
           <div class="stat-row">

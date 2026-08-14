@@ -6,24 +6,24 @@
 export const SPLITS = {
   SPLIT_1: {
     id: 'SPLIT_1',
-    name: '第一賽季 (Split 1)',
-    shortName: 'Split 1',
+    name: '春季賽 (Spring Split)',
+    shortName: '春季賽',
     desc: '全新賽季揭幕戰，適應年度大改版 Meta，角逐 First Stand 國際資格。',
     qualifiesFor: 'FIRST_STAND',
     regularSeasonMatches: 7, // 快速賽程場次
   },
   SPLIT_2: {
     id: 'SPLIT_2',
-    name: '第二賽季 (Split 2)',
-    shortName: 'Split 2',
+    name: '夏季賽 (Summer Split)',
+    shortName: '夏季賽',
     desc: '仲夏爭霸，磨合完成的主力陣容正面交鋒，角逐 MSI 季中邀請賽門票。',
     qualifiesFor: 'MSI',
     regularSeasonMatches: 7,
   },
   SPLIT_3: {
     id: 'SPLIT_3',
-    name: '第三賽季 (Split 3)',
-    shortName: 'Split 3',
+    name: '秋季賽 (Autumn Split)',
+    shortName: '秋季賽',
     desc: '年度終極決戰，爭奪 LCP 年度總冠軍與世界大賽 (Worlds) 出戰席位。',
     qualifiesFor: 'WORLDS',
     regularSeasonMatches: 7,
