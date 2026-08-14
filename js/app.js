@@ -2030,7 +2030,14 @@ function runProSplit(splitKey, onSplitDone) {
   }
 
   function triggerMidSplitEvent() {
-    const ev = getRandomEvent(rng, S.age);
+    let ev;
+    if (S.rosterStatus === 'SUB') {
+      // Filter out MATCH category events because benched players are not on the court
+      const nonMatchEvents = EVENTS.filter(e => e.category !== 'MATCH' && (!e.minAge || S.age >= e.minAge));
+      ev = nonMatchEvents.length > 0 ? rng.choice(nonMatchEvents) : EVENTS[0];
+    } else {
+      ev = getRandomEvent(rng, S.age);
+    }
     choose(`賽事事件：${ev.title}`, ev.choices.map(c => ({
       t: c.text,
       s: `決策：${c.type}`,
