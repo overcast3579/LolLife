@@ -305,7 +305,7 @@ function choose(title, opts) {
   const act = $('act');
   act.style.display = 'block';
   act.innerHTML = `<div class="title">${title}</div>` + opts.map((o, i) => `
-    <button class="btn${o.main ? ' main' : ''}${o.warn ? ' warn' : ''}" data-idx="${i}">
+    <button class="btn${o.main ? ' main' : ''}${o.warn ? ' warn' : ''}" data-idx="${i}" ${o.disabled ? 'disabled style="opacity:0.4; cursor:default;"' : ''}>
       ${o.t}
       ${o.s ? `<small>${o.s}</small>` : ''}
     </button>
@@ -313,6 +313,7 @@ function choose(title, opts) {
 
   act.querySelectorAll('button').forEach(btn => {
     btn.onclick = () => {
+      if (btn.hasAttribute('disabled')) return;
       const idx = parseInt(btn.getAttribute('data-idx'), 10);
       act.style.display = 'none';
       if (opts[idx] && opts[idx].f) opts[idx].f();
@@ -2326,146 +2327,150 @@ function allocateSplitPoints(pointsEarned, onDone) {
     onDone();
     return;
   }
-  
+
+  const act = $('act');
+  act.style.display = 'block';
+
   // Store original state to allow reset/undo
-  const origMechanics = S.ab.mechanics;
-  const origLaning = S.ab.laning;
-  const origMacro = S.ab.macro;
-  const origTeamfight = S.ab.teamfight;
-  const origChampPool = S.ab.championPool;
-  const origMental = S.ab.mental;
-  const origComm = S.ab.communication;
-  const origDiscipline = S.ab.discipline;
+  const origAb = { ...S.ab };
   const origWrist = S.wristHealth;
   const totalPoints = pointsEarned;
   
   let currentPoints = pointsEarned;
+  const hist = []; // [{ key, got }]
 
-  function renderAllocationMenu() {
+  function renderAlloc() {
     board(1);
-    choose(`🎯 季末天賦加點 (可用點數: ${currentPoints})`, [
-      {
-        t: `➕ 提升操作 (當前: ${S.ab.mechanics} / 上限: ${S.pot.mechanics})`,
-        s: '操作基本功，影響對線擊殺與團戰極限秀機率',
-        disabled: currentPoints <= 0 || S.ab.mechanics >= S.pot.mechanics,
-        f: () => {
-          S.ab.mechanics++;
-          currentPoints--;
-          renderAllocationMenu();
-        }
-      },
-      {
-        t: `➕ 提升對線 (當前: ${S.ab.laning} / 上限: ${S.pot.laning})`,
-        s: '對線細節與壓刀，影響前期發育與防 Gank 實力',
-        disabled: currentPoints <= 0 || S.ab.laning >= S.pot.laning,
-        f: () => {
-          S.ab.laning++;
-          currentPoints--;
-          renderAllocationMenu();
-        }
-      },
-      {
-        t: `➕ 提升觀念 (當前: ${S.ab.macro} / 上限: ${S.pot.macro})`,
-        s: '地圖大局觀、轉線與營運決策勝率',
-        disabled: currentPoints <= 0 || S.ab.macro >= S.pot.macro,
-        f: () => {
-          S.ab.macro++;
-          currentPoints--;
-          renderAllocationMenu();
-        }
-      },
-      {
-        t: `➕ 提升團戰 (當前: ${S.ab.teamfight} / 上限: ${S.pot.teamfight})`,
-        s: '中後期 5v5 團戰走位與輸出/控制輸出勝率',
-        disabled: currentPoints <= 0 || S.ab.teamfight >= S.pot.teamfight,
-        f: () => {
-          S.ab.teamfight++;
-          currentPoints--;
-          renderAllocationMenu();
-        }
-      },
-      {
-        t: `➕ 提升英雄池 (當前: ${S.ab.championPool} / 上限: ${S.pot.championPool})`,
-        s: '英雄池深度，BP 階段取得優勢機率',
-        disabled: currentPoints <= 0 || S.ab.championPool >= S.pot.championPool,
-        f: () => {
-          S.ab.championPool++;
-          currentPoints--;
-          renderAllocationMenu();
-        }
-      },
-      {
-        t: `➕ 提升心態 (當前: ${S.ab.mental} / 上限: ${S.pot.mental})`,
-        s: '抗壓與逆風局的判斷精準度，降低失誤機率',
-        disabled: currentPoints <= 0 || S.ab.mental >= S.pot.mental,
-        f: () => {
-          S.ab.mental++;
-          currentPoints--;
-          renderAllocationMenu();
-        }
-      },
-      {
-        t: `➕ 提升團隊溝通 (當前: ${S.ab.communication} / 上限: ${S.pot.communication})`,
-        s: '隊友默契配合與指揮溝通力，提升隊伍整體表現',
-        disabled: currentPoints <= 0 || S.ab.communication >= S.pot.communication,
-        f: () => {
-          S.ab.communication++;
-          currentPoints--;
-          renderAllocationMenu();
-        }
-      },
-      {
-        t: `➕ 提升職業紀律 (當前: ${S.ab.discipline} / 上限: ${S.pot.discipline})`,
-        s: '選手職業操守與生活作息規律性',
-        disabled: currentPoints <= 0 || S.ab.discipline >= S.pot.discipline,
-        f: () => {
-          S.ab.discipline++;
-          currentPoints--;
-          renderAllocationMenu();
-        }
-      },
-      {
-        t: `➕ 療養手腕健康 (當前: ${S.wristHealth}%)`,
-        s: '恢復 3% 手腕健康度，防止手腕傷病與強制下放替補',
-        disabled: currentPoints <= 0 || S.wristHealth >= 100,
-        f: () => {
+    act.innerHTML = `
+      <div class="title">🎯 季末天賦加點 (可用點數: ${currentPoints})</div>
+      <div id="dice" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; justify-content:center;">
+        ${Array.from({ length: totalPoints }).map((_, i) => `
+          <div class="die ${i < (totalPoints - currentPoints) ? 'used' : ''} ${i === (totalPoints - currentPoints) ? 'active' : ''}" style="width:24px; height:24px; line-height:24px; font-size:12px; font-weight:bold; margin:2px;">1</div>
+        `).join('')}
+      </div>
+      <div class="pool">
+        ${currentPoints > 0 
+          ? `當前點數：<b class="hl">1 點</b>（點擊下方能力直接加點，剩餘 ${currentPoints} 點）` 
+          : `<b class="hl">所有點數已分配完畢！</b>`}
+      </div>
+      <div id="alloc-rows">
+        ${Object.keys(ABL).map(k => {
+          const cur = S.ab[k];
+          const pot = S.pot[k] || 75;
+          const pct = Math.min(100, Math.round((cur / 80) * 100));
+          const potPct = Math.min(100, Math.round((pot / 80) * 100));
+          const cap = cur >= pot;
+          return `
+            <div class="abrow${cap ? ' capped' : ''}" data-key="${k}">
+              <div class="nm">${ABL[k]}</div>
+              <div class="bar">
+                <i style="width:${pct}%;"></i>
+                <em style="left:${potPct}%;"></em>
+              </div>
+              <div class="val">
+                ${cur}<small style="opacity:0.5;">/${pot}</small>
+              </div>
+            </div>
+          `;
+        }).join('')}
+        
+        <!-- Wrist health row -->
+        <div class="abrow${S.wristHealth >= 100 ? ' capped' : ''}" data-key="wrist">
+          <div class="nm">手腕健康</div>
+          <div class="bar">
+            <i style="width:${S.wristHealth}%; background:#2ecc71;"></i>
+            <em style="left:100%;"></em>
+          </div>
+          <div class="val">
+            ${S.wristHealth}%<small style="opacity:0.5;">/100</small>
+          </div>
+        </div>
+      </div>
+      <div class="row2" style="margin-top:10px; display:flex; gap:10px;">
+        <button class="btn warn" id="btn-reset-alloc" style="text-align:center; flex:1; ${currentPoints === totalPoints ? 'opacity:0.4; cursor:default;' : ''}" ${currentPoints === totalPoints ? 'disabled' : ''}>
+          🔄 重置分配 (退回點數)
+        </button>
+        <button class="btn" id="btn-undo-alloc" style="text-align:center; flex:1; ${hist.length === 0 ? 'opacity:0.4; cursor:default;' : ''}" ${hist.length === 0 ? 'disabled' : ''}>
+          ↩ 退回上一步
+        </button>
+      </div>
+      <div class="row2" style="margin-top:10px;">
+        ${currentPoints === 0 ? `
+          <button class="btn main" id="btn-finish-alloc" style="text-align:center; width:100%;">
+            確定完成分配 ▸ 繼續
+          </button>
+        ` : `
+          <button class="btn" style="text-align:center; width:100%; opacity:0.4; cursor:default;" disabled>
+            請先分配完剩餘的 ${currentPoints} 點數
+          </button>
+        `}
+      </div>
+    `;
+
+    // Click on attribute row to add 1 point
+    act.querySelectorAll('.abrow').forEach(row => {
+      row.onclick = () => {
+        if (currentPoints <= 0) return;
+        const k = row.getAttribute('data-key');
+        
+        if (k === 'wrist') {
+          if (S.wristHealth >= 100) return;
           S.wristHealth = Math.min(100, S.wristHealth + 3);
-          currentPoints--;
-          renderAllocationMenu();
+          hist.push({ key: 'wrist', got: 3 });
+        } else {
+          if (S.ab[k] >= S.pot[k]) return;
+          S.ab[k]++;
+          hist.push({ key: k, got: 1 });
         }
-      },
-      {
-        t: '🔄 重置分配 (退回點數)',
-        warn: true,
-        disabled: currentPoints === totalPoints,
-        s: '將所有屬性回復至本次分配前狀態，重新分配',
-        f: () => {
-          S.ab.mechanics = origMechanics;
-          S.ab.laning = origLaning;
-          S.ab.macro = origMacro;
-          S.ab.teamfight = origTeamfight;
-          S.ab.championPool = origChampPool;
-          S.ab.mental = origMental;
-          S.ab.communication = origComm;
-          S.ab.discipline = origDiscipline;
-          S.wristHealth = origWrist;
-          currentPoints = totalPoints;
-          renderAllocationMenu();
+        
+        currentPoints--;
+        board(1);
+        renderAlloc();
+      };
+    });
+
+    // Reset button
+    const btnReset = $('btn-reset-alloc');
+    if (btnReset && currentPoints !== totalPoints) {
+      btnReset.onclick = () => {
+        Object.keys(origAb).forEach(k => {
+          S.ab[k] = origAb[k];
+        });
+        S.wristHealth = origWrist;
+        currentPoints = totalPoints;
+        hist.length = 0; // clear history
+        board(1);
+        renderAlloc();
+      };
+    }
+
+    // Undo button
+    const btnUndo = $('btn-undo-alloc');
+    if (btnUndo && hist.length > 0) {
+      btnUndo.onclick = () => {
+        const last = hist.pop();
+        if (last.key === 'wrist') {
+          S.wristHealth -= last.got;
+        } else {
+          S.ab[last.key] -= last.got;
         }
-      },
-      {
-        t: '◀ 確定完成分配',
-        main: true,
-        disabled: currentPoints > 0, 
-        s: currentPoints > 0 ? `請先分配完剩餘的 ${currentPoints} 點數` : '確認完成屬性分配，進入下一階段',
-        f: () => {
-          onDone();
-        }
-      }
-    ]);
+        currentPoints++;
+        board(1);
+        renderAlloc();
+      };
+    }
+
+    // Finish button
+    const btnFinish = $('btn-finish-alloc');
+    if (btnFinish) {
+      btnFinish.onclick = () => {
+        act.style.display = 'none';
+        onDone();
+      };
+    }
   }
-  
-  renderAllocationMenu();
+
+  renderAlloc();
 }
 
 // 4. 轉會市場與 LCK/LPL 旅外
