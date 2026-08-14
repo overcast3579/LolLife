@@ -1332,13 +1332,14 @@ function phaseAmateurTryouts() {
         card('gold', '加盟正式簽約', `你正式簽約加盟 <b class="hl">${o.teamName}</b>！職位：${S.rosterStatus === 'STARTER' ? '<b class="hl">先發選手</b>' : '<b class="warn">替補選手</b>'}`);
         tlPush(o.status === 'Starter' ? '登陸 LCP' : '加入青訓');
 
-      choose('賽季結束', [{
-        t: '進入下一年 ▸ 2027 (17歲 職業新賽季)',
-        main: true,
-        f: () => startNextProYear()
-      }]);
-    }
-  })));
+        choose('賽季結束', [{
+          t: '進入下一年 ▸ 2027 (17歲 職業新賽季)',
+          main: true,
+          f: () => startNextProYear()
+        }]);
+      }
+    };
+  }));
 }
 
 // 職業年度循環
