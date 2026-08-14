@@ -1323,7 +1323,7 @@ function phaseAmateurTryouts() {
   choose('請選擇你的首份簽約戰隊：', offers.map(o => {
     const myOvr = ovr();
     const canBeStarter = o.status === 'Starter' || myOvr >= o.competitorOvr;
-    const statusTxt = canBeStarter ? '🟢 預計先發' : `🔴 預計替補 (需追趕 ${o.competitorOvr - myOvr} OVR)`;
+    const statusTxt = canBeStarter ? '🟢 預計先發' : `🔴 預計二軍 (需追趕 ${o.competitorOvr - myOvr} OVR)`;
 
     return {
       t: `✍️ 簽約 ${o.teamName}`,
@@ -1335,11 +1335,11 @@ function phaseAmateurTryouts() {
         S.salary = o.salary;
         S.money += Math.round(o.salary * 0.3);
         S.stage = o.status === 'Amateur' ? 'AMATEUR' : 'PRO';
-        S.rosterStatus = (o.status === 'Starter' || canBeStarter) ? 'STARTER' : 'SUB';
+        S.rosterStatus = (o.status === 'Starter' || canBeStarter) ? 'STARTER' : 'ACADEMY';
         S.benchCompetitorOvr = o.competitorOvr;
         S.tactics = { banPickPreference: 'META', style: 'BALANCED' };
-        card('gold', '加盟正式簽約', `你正式簽約加盟 <b class="hl">${o.teamName}</b>！職位：${S.rosterStatus === 'STARTER' ? '<b class="hl">先發選手</b>' : '<b class="warn">替補選手</b>'}`);
-        tlPush(o.status === 'Starter' ? '登陸 LCP' : '加入青訓');
+        card('gold', '加盟正式簽約', `你正式簽約加盟 <b class="hl">${o.teamName}</b>！職位：${S.rosterStatus === 'STARTER' ? '<b class="hl">一軍先發選手</b>' : '<b class="warn">二軍培訓選手</b>'}`);
+        tlPush(o.status === 'Starter' ? '登陸 LCP' : '加入二軍');
 
         choose('賽季結束', [{
           t: '進入下一年 ▸ 2027 (17歲 職業新賽季)',
