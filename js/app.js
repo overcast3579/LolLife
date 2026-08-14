@@ -1320,6 +1320,7 @@ function startNextProYear() {
 
 function runProSplit(splitKey, onSplitDone) {
   board(1);
+  S.seasonSimMode = 'MANUAL'; // Reset simulation preference to manual for the new split
   const splitInfo = SPLITS[splitKey];
   divider(`${S.year} · ${splitInfo.name}`);
 
@@ -2199,6 +2200,7 @@ function runProSplit(splitKey, onSplitDone) {
   }
 
   function proceedToSplitSettlement(splitKey, splitInfo, wonChamp, onSplitDone) {
+    S.seasonSimMode = 'MANUAL'; // Reset simulation preference to manual at the end of the split
     S.fatigue = Math.min(100, S.fatigue + 15);
     S.stress = Math.max(0, S.stress - 10);
     
