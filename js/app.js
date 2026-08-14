@@ -1954,6 +1954,51 @@ function initApp() {
     };
     $('md-close').onclick = () => modal.classList.remove('show');
   };
+
+  // 賽程規劃說明按鈕
+  $('btn-schedule-guide').onclick = () => {
+    const modal = $('modal');
+    $('modal-box').innerHTML = `
+      <div style="text-align: left; line-height: 1.6; max-height: 400px; overflow-y: auto; padding-right: 5px;">
+        <h3 style="text-align: center; color: var(--accent); margin-top: 0; margin-bottom: 15px;">📅 職業電競年度賽程說明</h3>
+        
+        <div style="margin-bottom: 12px; background: rgba(0, 242, 254, 0.05); border-radius: var(--r); border-left: 3px solid var(--accent); padding: 8px 12px;">
+          <strong style="color: var(--accent);">🔄 年度週期概述</strong><br>
+          <span style="font-size: 12px; color: var(--text);">職業聯賽一整年固定分為三個賽季（Split 1, 2, 3）。每個賽季例行賽打完，前 4 名晉級季後賽，獲勝可獲得對應的國際賽事門票。年底為轉會期，隨後邁入下一年。</span>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong>1. 季前準備與自主特訓</strong><br>
+          <span style="font-size: 12px; color: var(--dim);">每年首個賽季開啟前，系統會分發特訓加點，您可進行自主特訓，提升您喜愛的英雄熟練度。</span>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong>2. 第一賽季 (Split 1)</strong><br>
+          <span style="font-size: 12px; color: var(--dim);">• 例行賽：單循環賽事（LCP 共 7 輪 / LCK&LPL 為 5 輪）。<br>• 季後賽：例行賽前 4 名進行淘汰賽。<br>• 國際賽：<b>冠軍隊伍</b>將代表賽區出戰 <b>First Stand 國際大賽</b>。</span>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong>3. 第二賽季 (Split 2)</strong><br>
+          <span style="font-size: 12px; color: var(--dim);">• 例行賽與季後賽形式相同。<br>• 國際賽：<b>冠軍與亞軍（前 2 名）</b>代表賽區出征 <b>MSI 季中邀請賽</b>。</span>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong>4. 第三賽季 (Split 3)</strong><br>
+          <span style="font-size: 12px; color: var(--dim);">• 例行賽與季後賽形式相同。<br>• 國際賽：<b>冠軍與亞軍（前 2 名）</b>代表賽區晉級 <b>世界大賽 (Worlds)</b>，爭奪全球總冠軍最高榮耀！</span>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong>5. 季末轉會窗口 (Off-season)</strong><br>
+          <span style="font-size: 12px; color: var(--dim);">第三賽季國際賽結束後，進入轉會期。您可以選擇與原隊續約、尋求 LPL/LCK 頂級豪強合約，或在達成傳奇成就時選擇光榮退役。</span>
+        </div>
+
+        <button class="btn main" id="md-guide-close" style="text-align:center; margin-top:15px; width: 100%;">我知道了</button>
+      </div>
+    `;
+    modal.classList.add('show');
+
+    $('md-guide-close').onclick = () => modal.classList.remove('show');
+  };
 }
 
 window.addEventListener('DOMContentLoaded', initApp);

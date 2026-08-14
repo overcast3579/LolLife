@@ -947,7 +947,7 @@ table.fin td:first-child, table.fin th:first-child, table.st td:first-child, tab
   text-align: center;
 }
 
-#btn-menu {
+#btn-menu, #btn-schedule-guide {
   background: var(--panel2);
   border: 1px solid var(--edge);
   color: var(--text);
@@ -963,7 +963,7 @@ table.fin td:first-child, table.fin th:first-child, table.st td:first-child, tab
   white-space: nowrap;
 }
 
-#btn-menu:hover {
+#btn-menu:hover, #btn-schedule-guide:hover {
   color: var(--accent);
   border-color: var(--accent);
 }
