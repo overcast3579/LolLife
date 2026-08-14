@@ -1964,6 +1964,8 @@ function runProSplit(splitKey, onSplitDone) {
       <b>單場 MVP (POG) 次數</b>：<b class="hl">${st.pogCount} 次</b>
     `);
   }
+
+  playSeasonStep();
 }
 
 // 4. 轉會市場與 LCK/LPL 旅外
