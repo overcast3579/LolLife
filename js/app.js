@@ -1501,6 +1501,11 @@ function runProSplit(splitKey, onSplitDone) {
               }
             },
             {
+              t: '📊 查看當前狀態與先發競爭數據',
+              s: '查看您的手腕健康、疲勞值、教練信任度以及競爭對手能力',
+              f: () => { showPlayerCompetitorStats(); }
+            },
+            {
               t: '⚡ 快速模擬此輪',
               s: '系統依綜合實力與自動模擬設定直接計算本場勝負',
               f: () => {
@@ -1543,6 +1548,11 @@ function runProSplit(splitKey, onSplitDone) {
               main: true,
               s: '因您目前在替補席，將由二隊替補選手代替您上場出戰',
               f: () => { resolveSubRound(); }
+            },
+            {
+              t: '📊 查看當前狀態與先發競爭數據',
+              s: '查看您的手腕健康、疲勞值、教練信任度以及競爭對手能力',
+              f: () => { showPlayerCompetitorStats(); }
             },
             {
               t: '🏋️ 進行瘋狂自主加練',
@@ -1876,6 +1886,41 @@ function runProSplit(splitKey, onSplitDone) {
         <tbody>${tableRows}</tbody>
       </table>
     `);
+  }
+
+  function showPlayerCompetitorStats() {
+    board(1);
+    const competitorOvr = S.benchCompetitorOvr || 65;
+    
+    const wristWarn = S.wristHealth < 40 ? '⚠️ <b style="color:#ff4a4a;">健康度過低，極易爆發手腕傷病！</b>' : '🟢 正常';
+    const fatigueWarn = S.fatigue > 85 ? '⚠️ <b style="color:#ff4a4a;">極度疲勞，將強制下放替補席！</b>' : (S.fatigue >= 50 ? '🟡 偏高 (替補重回先發需降至 50% 以下)' : '🟢 良好');
+    const trustWarn = S.coachTrust < 30 ? '⚠️ <b style="color:#ff4a4a;">信任危機，將強制下放替補席！</b>' : (S.coachTrust <= 50 ? '🟡 偏低 (替補重回先發需達到 50 點以上)' : '🟢 信任');
+    const competitorDiff = ovr() - competitorOvr;
+    const ovrStatus = competitorDiff >= 0 ? `🟢 超越對手 (+${competitorDiff} OVR)` : `🔴 落後對手 (${competitorDiff} OVR)`;
+
+    card('gold', '📊 選手當前狀態與先發競爭報告', `
+      <div style="font-size:12.5px; line-height:1.6; text-align:left;">
+        <h4 style="margin:4px 0; color:var(--accent);">👑 席位競爭 (目前狀態：${S.rosterStatus === 'STARTER' ? '<span style="color:#00f2fe;font-weight:bold;">先發 starter</span>' : '<span style="color:#ff9f43;font-weight:bold;">替補 sub</span>'})</h4>
+        • 我的綜合戰力 (OVR)：<b class="hl">${ovr()}</b><br>
+        • 先發競爭對手戰力：<b class="hl">${competitorOvr}</b> OVR<br>
+        • 實力對比：<b>${ovrStatus}</b> (替補重回先發需要 OVR >= 對手)<br>
+        <br>
+        <h4 style="margin:4px 0; color:var(--accent);">🩺 生理健康數據</h4>
+        • 手腕健康度：<b>${S.wristHealth}%</b> (${wristWarn})<br>
+        • 身體疲勞值：<b>${S.fatigue}%</b> (${fatigueWarn})<br>
+        <br>
+        <h4 style="margin:4px 0; color:var(--accent);">🤝 團隊與教練關係</h4>
+        • 教練信任度：<b>${S.coachTrust} / 100</b> (${trustWarn})<br>
+      </div>
+    `);
+    
+    choose('查看完畢', [
+      {
+        t: '◀ 返回賽程選項',
+        main: true,
+        f: () => { playSeasonStep(); }
+      }
+    ]);
   }
 
   function checkPlayoffsQualification() {
