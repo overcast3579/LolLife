@@ -1315,7 +1315,9 @@ function phaseAmateurTryouts() {
       S.money += Math.round(o.salary * 0.3);
       S.stage = o.status === 'Amateur' ? 'AMATEUR' : 'PRO';
       S.rosterStatus = o.status === 'Starter' ? 'STARTER' : 'SUB';
-      S.benchCompetitorOvr = 65;
+      const teamObj = getTeamById(o.teamId);
+      const teamBaseRating = teamObj ? teamObj.baseRating : 65;
+      S.benchCompetitorOvr = rng.range(teamBaseRating - 3, teamBaseRating + 2);
       S.tactics = { banPickPreference: 'META', style: 'BALANCED' };
       card('gold', '加盟正式簽約', `你正式簽約加盟 <b class="hl">${o.teamName}</b>！開啟職業電競新篇章！`);
       tlPush(o.status === 'Starter' ? '登陸 LCP' : '加入青訓');
@@ -1370,6 +1372,11 @@ function runProSplit(splitKey, onSplitDone) {
 
   const meta = generateSplitMeta(rng, S.year, splitKey);
   const playerTeam = getTeamById(S.teamId) || TEAMS[0];
+  
+  // Re-roll bench competitor OVR for this split based on current team rating
+  const teamBaseRating = playerTeam.baseRating || 70;
+  S.benchCompetitorOvr = rng.range(teamBaseRating - 3, teamBaseRating + 2);
+
   const region = playerTeam.region || 'LCP';
   const regionTeams = TEAMS.filter(t => t.region === region);
   
@@ -1418,9 +1425,7 @@ function runProSplit(splitKey, onSplitDone) {
     board(1);
     const season = S.season;
     
-    if (S.benchCompetitorOvr !== undefined) {
-      S.benchCompetitorOvr = Math.max(50, Math.min(95, S.benchCompetitorOvr + rng.range(-1, 2)));
-    }
+    // Note: S.benchCompetitorOvr is now re-rolled at the start of each split based on team strength, keeping it stable during the split.
 
     if (S.injuryRoundsLeft > 0) {
       S.injuryRoundsLeft--;
@@ -2764,6 +2769,9 @@ function phaseYearEndTransfer() {
       S.teamId = o.teamId;
       S.salary = o.salary;
       S.money += Math.round(o.salary * 0.4);
+      const teamObj = getTeamById(o.teamId);
+      const teamBaseRating = teamObj ? teamObj.baseRating : 70;
+      S.benchCompetitorOvr = rng.range(teamBaseRating - 3, teamBaseRating + 2);
       card('gold', '轉會簽約確立', `你正式加盟 <b class="hl">${o.teamName}</b>！`);
       tlPush(`加盟 ${o.teamName}`);
 
