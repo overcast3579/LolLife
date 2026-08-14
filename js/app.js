@@ -1241,32 +1241,32 @@ function startCareer() {
   });
 }
 
-function phaseAmateurYear() {
-  function getTacticModifier() {
-    if (!S || !S.tactics) return 0;
-    let mod = 0;
-    
-    if (S.tactics.banPickPreference === 'SIGNATURE') {
-      let maxPts = 0;
-      Object.values(S.masteries || {}).forEach(pts => {
-        if (pts > maxPts) maxPts = pts;
-      });
-      mod += Math.min(5, Math.floor(maxPts / 5000));
-    } else if (S.tactics.banPickPreference === 'OFFMETA') {
-      mod -= 4;
-    }
-    
-    if (S.tactics.style === 'AGGRESSIVE') {
-      const playerOvr = ovr();
-      if (playerOvr > 72) mod += 5;
-      else mod -= 5;
-    } else if (S.tactics.style === 'DEFENSIVE') {
-      mod += 1;
-    }
-    
-    return mod;
+function getTacticModifier() {
+  if (!S || !S.tactics) return 0;
+  let mod = 0;
+  
+  if (S.tactics.banPickPreference === 'SIGNATURE') {
+    let maxPts = 0;
+    Object.values(S.masteries || {}).forEach(pts => {
+      if (pts > maxPts) maxPts = pts;
+    });
+    mod += Math.min(5, Math.floor(maxPts / 5000));
+  } else if (S.tactics.banPickPreference === 'OFFMETA') {
+    mod -= 4;
   }
+  
+  if (S.tactics.style === 'AGGRESSIVE') {
+    const playerOvr = ovr();
+    if (playerOvr > 72) mod += 5;
+    else mod -= 5;
+  } else if (S.tactics.style === 'DEFENSIVE') {
+    mod += 1;
+  }
+  
+  return mod;
+}
 
+function phaseAmateurYear() {
   board(1);
   divider(`${S.year} · 業餘盃賽與新秀選拔`);
 
