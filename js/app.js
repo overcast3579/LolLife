@@ -281,8 +281,11 @@ function board(phase = 0) {
 
   $('bd-name').innerHTML = `${S.inGameId}<small>${S.name}·${POS_NAMES[S.pos]}·${playerType()}</small>`;
   const teamObj = getTeamById(S.teamId);
-  const statusStr = S.rosterStatus === 'SUB' ? '【替補】' : S.rosterStatus === 'ACADEMY' ? '【青訓】' : '【先發】';
-  $('bd-team').innerText = `${statusStr} ${teamObj ? `${teamObj.shortName} (${teamObj.region})` : S.team}`;
+  const statusStr = S.rosterStatus === 'SUB' ? '【替補】' : S.rosterStatus === 'ACADEMY' ? '【二軍】' : '【先發】';
+  const teamNameStr = S.rosterStatus === 'ACADEMY' 
+    ? (teamObj ? `${teamObj.shortName} Acad` : `${S.team} 二隊`)
+    : (teamObj ? teamObj.shortName : S.team);
+  $('bd-team').innerText = `${statusStr} ${teamNameStr}${teamObj ? ` (${teamObj.region})` : ''}`;
 
   $('bd-age').innerText = S.age;
   $('bd-year').innerText = S.year;
@@ -1451,15 +1454,28 @@ function runProSplit(splitKey, onSplitDone) {
       if (S.rosterStatus === 'STARTER') {
         if (ovr() < S.benchCompetitorOvr - 5 || S.fatigue > 85 || S.coachTrust < 30) {
           S.rosterStatus = 'SUB';
-          card('bad', '💺 下放替補席', `教練宣布調整先發名單！因你近期綜合能力 (${ovr()}) 低於替補競爭對手 (${S.benchCompetitorOvr})、極度疲勞或教練信任不足，已被下放至替補名單。`);
+          card('bad', '💺 下放替補席', `教練宣布調整先發名單！因你近期綜合能力 (${ovr()}) 低於替補競爭對手 (${S.benchCompetitorOvr})、極度疲勞或教練信任不足，已被下放至一軍替補席。`);
         }
       } else if (S.rosterStatus === 'SUB') {
+        if (ovr() < S.benchCompetitorOvr - 8) {
+          S.rosterStatus = 'ACADEMY';
+          card('bad', '📉 下放二軍培訓', `教練宣布調整名單！因你的綜合戰力 (${ovr()}) 遠低於一軍先發選手 (${S.benchCompetitorOvr})，被教練下放至二軍聯賽進行重新磨練。`);
+        } else {
+          const canRegainStarter = (!S.injuryRoundsLeft || S.injuryRoundsLeft <= 0) &&
+            S.fatigue < 50 &&
+            ((S.coachTrust > 65 && ovr() >= S.benchCompetitorOvr - 3) || (S.coachTrust > 45 && ovr() >= S.benchCompetitorOvr));
+          if (canRegainStarter) {
+            S.rosterStatus = 'STARTER';
+            card('good', '🔥 奪回先發席位', `教練對你最近的調整狀態與溝通非常滿意！你重返一軍先發名單！`);
+          }
+        }
+      } else if (S.rosterStatus === 'ACADEMY') {
         const canRegainStarter = (!S.injuryRoundsLeft || S.injuryRoundsLeft <= 0) &&
           S.fatigue < 50 &&
           ((S.coachTrust > 65 && ovr() >= S.benchCompetitorOvr - 3) || (S.coachTrust > 45 && ovr() >= S.benchCompetitorOvr));
         if (canRegainStarter) {
           S.rosterStatus = 'STARTER';
-          card('good', '🔥 奪回先發席位', `教練對你最近的調整狀態與溝通非常滿意！你重返先發名單！`);
+          card('gold', '🔥 晉升一軍先發！', `你在二軍聯賽的發揮極其耀眼，實力已獲得認可！主教練正式宣布將你提拔至一軍先發名單！`);
         }
       }
     }
@@ -1553,9 +1569,8 @@ function runProSplit(splitKey, onSplitDone) {
         const roundNum = season.currentRound + 1;
         const matchInfo = season.schedule[season.currentRound];
         const nextOpp = getTeamById(matchInfo.oppTeamId) || TEAMS[0];
-        const isPlayerStarter = S.rosterStatus === 'STARTER';
         
-        if (isPlayerStarter) {
+        if (S.rosterStatus === 'STARTER') {
           choose(`${splitInfo.name} · 第 ${roundNum}/${season.schedule.length} 輪對決 (${nextOpp.name})`, [
             {
               t: '🎮 進入本場比賽 (進行 BP 選角與手動對決)',
@@ -1604,6 +1619,53 @@ function runProSplit(splitKey, onSplitDone) {
               t: '⚙️ 設定自動模擬策略',
               s: '設定自動模擬時的 B/P 偏好與戰術風格',
               f: () => { showTacticsMenu(); }
+            }
+          ]);
+        } else if (S.rosterStatus === 'ACADEMY') {
+          const academyOpp = { ...nextOpp, name: `${nextOpp.shortName} Academy`, shortName: `${nextOpp.shortName} Acad` };
+          choose(`二軍聯賽 · 第 ${roundNum}/${season.schedule.length} 輪 (${academyOpp.name})`, [
+            {
+              t: '🎮 進入二軍聯賽對決 (進行 BP 與手動對決)',
+              main: true,
+              s: S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動選擇英雄，進入 7 階段選線與團戰策略決策',
+              f: () => {
+                interactiveBPDraft(academyOpp, meta, (won) => { resolveAcademyMatchResult(won); });
+              }
+            },
+            {
+              t: '📊 查看當前狀態與先發競爭數據',
+              s: '查看您的手腕健康、疲勞值、教練信任度以及一軍先發戰力',
+              f: () => { showPlayerCompetitorStats(); }
+            },
+            {
+              t: '⚡ 快速模擬此輪二軍賽事',
+              s: '系統直接計算本場勝負，您作為二軍主力出戰',
+              f: () => {
+                const playerOvr = ovr() + getTacticModifier();
+                const won = rng.next() < (playerOvr / 95);
+                resolveAcademyMatchResult(won);
+              }
+            },
+            {
+              t: '⏩ 模擬剩餘常規賽 (僅例行賽)',
+              s: '自動模擬完剩餘例行賽二軍對局，並在季後賽前暫停讓您接手',
+              f: () => {
+                S.seasonSimMode = 'REGULAR_ONLY';
+                executeRegularSeasonSim();
+              }
+            },
+            {
+              t: '🏆 模擬整個賽季 (例行賽 + 季後賽)',
+              s: '自動模擬完剩餘例行賽二軍與一軍季後賽',
+              f: () => {
+                S.seasonSimMode = 'FULL_SEASON';
+                executeRegularSeasonSim();
+              }
+            },
+            {
+              t: '📊 查看當前聯賽積分榜',
+              s: '查看當前賽區一軍各戰隊的勝敗排名',
+              f: () => { showStandingsCard(); playSeasonStep(); }
             }
           ]);
         } else {
@@ -2014,6 +2076,22 @@ function runProSplit(splitKey, onSplitDone) {
           recordMatchStats(false, false);
           recordMatchStats(false, false);
         }
+      } else if (S.rosterStatus === 'ACADEMY') {
+        // Player is playing in Academy League
+        const wonAcademy = rng.next() < (ovr() / 95);
+        S.stats.matchesPlayed += 3;
+        S.stats.matchesWon += wonAcademy ? 2 : 1;
+        S.currentSplitStats.matchesPlayed += 3;
+        S.currentSplitStats.matchesWon += wonAcademy ? 2 : 1;
+        if (wonAcademy) {
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(false, false);
+        } else {
+          recordMatchStats(true, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+        }
       }
       
       simulateOtherTeams(curOpp.id);
@@ -2069,6 +2147,60 @@ function runProSplit(splitKey, onSplitDone) {
         choose('事件結束', [{ t: '繼續推進賽季 ▸', main: true, f: () => playSeasonStep() }]);
       }
     })));
+  }
+
+  function resolveAcademyMatchResult(won) {
+    const season = S.season;
+    const matchInfo = season.schedule[season.currentRound];
+    const opp = getTeamById(matchInfo.oppTeamId);
+    
+    // 1. A-team match simulation (played by first-team starter competitor)
+    const competitorWon = rng.next() < (S.benchCompetitorOvr / 100);
+    if (competitorWon) {
+      season.standings[S.teamId].wins++;
+      season.standings[opp.id].losses++;
+      matchInfo.won = true;
+    } else {
+      season.standings[S.teamId].losses++;
+      season.standings[opp.id].wins++;
+      matchInfo.won = false;
+    }
+    matchInfo.isFinished = true;
+
+    // 2. Personal Academy match result
+    const wasManual = S.currentSplitStats.matchesPlayed > season.currentRound;
+    if (wasManual) {
+      S.stats.matchesPlayed += 2;
+      S.stats.matchesWon += won ? 1 : 1;
+      S.currentSplitStats.matchesPlayed += 2;
+      S.currentSplitStats.matchesWon += won ? 1 : 1;
+      recordMatchStats(true, false);
+      recordMatchStats(false, false);
+    } else {
+      S.stats.matchesPlayed += 3;
+      S.stats.matchesWon += won ? 2 : 1;
+      S.currentSplitStats.matchesPlayed += 3;
+      S.currentSplitStats.matchesWon += won ? 2 : 1;
+      if (won) {
+        recordMatchStats(true, false);
+        recordMatchStats(true, false);
+        recordMatchStats(false, false);
+      } else {
+        recordMatchStats(true, false);
+        recordMatchStats(false, false);
+        recordMatchStats(false, false);
+      }
+    }
+
+    if (won) {
+      card('good', `第 ${season.currentRound + 1} 輪 二軍聯賽戰報`, `你在二軍聯賽大秀四方，率隊以 <b class="up">2:0 / 2:1 擊敗了 ${opp.shortName} Academy</b>！`);
+    } else {
+      card('bad', `第 ${season.currentRound + 1} 輪 二軍聯賽戰報`, `二軍隊伍配合欠佳，以 <b class="dn">1:2 憾負 ${opp.shortName} Academy</b>。`);
+    }
+
+    simulateOtherTeams(opp.id);
+    season.currentRound++;
+    choose('本輪結束', [{ t: '繼續推進賽程 ▸', main: true, f: () => playSeasonStep() }]);
   }
 
   function resolveProMatchResult(won) {
@@ -2159,17 +2291,36 @@ function runProSplit(splitKey, onSplitDone) {
     const competitorOvr = S.benchCompetitorOvr || 65;
     
     const wristWarn = S.wristHealth < 40 ? '⚠️ <b style="color:#ff4a4a;">健康度過低，極易爆發手腕傷病！</b>' : '🟢 正常';
-    const fatigueWarn = S.fatigue > 85 ? '⚠️ <b style="color:#ff4a4a;">極度疲勞，將強制下放替補席！</b>' : (S.fatigue >= 50 ? '🟡 偏高 (替補重回先發需降至 50% 以下)' : '🟢 良好');
-    const trustWarn = S.coachTrust < 30 ? '⚠️ <b style="color:#ff4a4a;">信任危機，將強制下放替補席！</b>' : (S.coachTrust <= 50 ? '🟡 偏低 (替補重回先發需達到 50 點以上)' : '🟢 信任');
+    const fatigueWarn = S.fatigue > 85 ? '⚠️ <b style="color:#ff4a4a;">極度疲勞，將強制下放替補席！</b>' : (S.fatigue >= 50 ? '🟡 偏高 (重回先發需降至 50% 以下)' : '🟢 良好');
+    const trustWarn = S.coachTrust < 30 ? '⚠️ <b style="color:#ff4a4a;">信任危機，將下放替補或二軍！</b>' : (S.coachTrust <= 50 ? '🟡 偏低' : '🟢 信任');
     const competitorDiff = ovr() - competitorOvr;
-    const ovrStatus = competitorDiff >= 0 ? `🟢 超越對手 (+${competitorDiff} OVR)` : `🔴 落後對手 (${competitorDiff} OVR)`;
+    const ovrStatus = competitorDiff >= 0 ? `🟢 超越一軍先發 (+${competitorDiff} OVR)` : `🔴 落後一軍先發 (${competitorDiff} OVR)`;
+
+    let statusText = '';
+    if (S.rosterStatus === 'STARTER') {
+      statusText = '<span style="color:#00f2fe;font-weight:bold;">一軍先發 starter</span>';
+    } else if (S.rosterStatus === 'SUB') {
+      statusText = '<span style="color:#ff9f43;font-weight:bold;">一軍替補 sub</span>';
+    } else if (S.rosterStatus === 'ACADEMY') {
+      statusText = '<span style="color:#718096;font-weight:bold;">二軍青訓 academy</span>';
+    }
+
+    let seatTip = '';
+    if (S.rosterStatus === 'STARTER') {
+      seatTip = '若 OVR 落後先發對手 5 點以上，將被下放替補。';
+    } else if (S.rosterStatus === 'SUB') {
+      seatTip = `重回先發需要 OVR 近逼對手且疲勞值低於 50%。若落後對手 8 點以上將被下放二軍。`;
+    } else if (S.rosterStatus === 'ACADEMY') {
+      seatTip = '在二軍聯賽磨練，若 OVR 追平一軍先發或信任度高且接近先發實力，即可晉升一軍！';
+    }
 
     card('gold', '📊 選手當前狀態與先發競爭報告', `
       <div style="font-size:12.5px; line-height:1.6; text-align:left;">
-        <h4 style="margin:4px 0; color:var(--accent);">👑 席位競爭 (目前狀態：${S.rosterStatus === 'STARTER' ? '<span style="color:#00f2fe;font-weight:bold;">先發 starter</span>' : '<span style="color:#ff9f43;font-weight:bold;">替補 sub</span>'})</h4>
+        <h4 style="margin:4px 0; color:var(--accent);">👑 席位競爭 (目前狀態：${statusText})</h4>
         • 我的綜合戰力 (OVR)：<b class="hl">${ovr()}</b><br>
-        • 先發競爭對手戰力：<b class="hl">${competitorOvr}</b> OVR<br>
-        • 實力對比：<b>${ovrStatus}</b> (替補重回先發需要 OVR >= 對手)<br>
+        • 一軍先發對手戰力：<b class="hl">${competitorOvr}</b> OVR<br>
+        • 實力對比：<b>${ovrStatus}</b><br>
+        • 晉升與席位提示：<b style="color:var(--gold);">${seatTip}</b><br>
         <br>
         <h4 style="margin:4px 0; color:var(--accent);">🩺 生理健康數據</h4>
         • 手腕健康度：<b>${S.wristHealth}%</b> (${wristWarn})<br>
