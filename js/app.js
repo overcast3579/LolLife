@@ -1227,93 +1227,512 @@ function startNextProYear() {
   // 季前特訓
   rollDice(4, `${S.age}歲 季前特訓加點`, () => {
     choose('季前準備就緒', [
-      { t: '🎯 進行英雄自主特訓', s: '提升專精英雄熟練度', f: () => trainChampionMastery(() => runProSplit('SPLIT_1', meta, () => runProSplit('SPLIT_2', meta, () => runProSplit('SPLIT_3', meta, () => phaseYearEndTransfer())))) },
-      { t: '⚔️ 直接開啟 Split 1 例行賽', main: true, f: () => runProSplit('SPLIT_1', meta, () => runProSplit('SPLIT_2', meta, () => runProSplit('SPLIT_3', meta, () => phaseYearEndTransfer()))) }
+      { t: '🎯 進行英雄自主特訓', s: '提升專精英雄熟練度', f: () => trainChampionMastery(() => runProSplit('SPLIT_1', () => runProSplit('SPLIT_2', () => runProSplit('SPLIT_3', () => phaseYearEndTransfer())))) },
+      { t: '⚔️ 直接開啟 Split 1 例行賽', main: true, f: () => runProSplit('SPLIT_1', () => runProSplit('SPLIT_2', () => runProSplit('SPLIT_3', () => phaseYearEndTransfer()))) }
     ]);
   });
 }
 
-function runProSplit(splitKey, meta, onSplitDone) {
+function runProSplit(splitKey, onSplitDone) {
   board(1);
   const splitInfo = SPLITS[splitKey];
   divider(`${S.year} · ${splitInfo.name}`);
 
-  const pOvr = ovr();
-  const oppTeams = TEAMS.filter(t => t.id !== S.teamId && (t.region === 'LCP' || t.region === S.region));
-  const nextOpp = rng.choice(oppTeams) || TEAMS[0];
+  // 1. Generate version meta
+  const meta = generateSplitMeta(rng, S.year, splitKey);
+  card('info', `${splitInfo.name} 版本公布：${meta.patchTitle}`, `${meta.desc}<br>強勢 T0 英雄焦點：${Object.values(meta.sTierChampions).flat().map(id => getChampionById(id)?.name || id).slice(0, 4).join('、 ')}`);
 
-  choose(`${splitInfo.name} · 系列賽對決 (${nextOpp.name})`, [
-    {
-      t: '🎮 親自出戰 (進入 BP 選角 & 7 階段戰術決策)',
-      main: true,
-      s: '手動選擇英雄、黑科技戰術與關鍵時刻大招決策',
-      f: () => {
-        interactiveBPDraft(nextOpp, meta, (won) => {
-          proceedSplitPostMatch(splitKey, splitInfo, won, onSplitDone);
-        });
+  // 2. Initialize Season Standings & Schedule if not initialized for this split
+  const playerTeam = getTeamById(S.teamId) || TEAMS[0];
+  const region = playerTeam.region || 'LCP';
+  const regionTeams = TEAMS.filter(t => t.region === region);
+  
+  const standings = {};
+  regionTeams.forEach(t => {
+    standings[t.id] = { wins: 0, losses: 0 };
+  });
+
+  const opponents = regionTeams.filter(t => t.id !== S.teamId);
+  const schedule = opponents.map(opp => ({
+    oppTeamId: opp.id,
+    isFinished: false,
+    won: false
+  }));
+  // Shuffle schedule deterministically based on seed and split key
+  const scheduleRng = new RNG(`${S.seed}_${S.year}_${splitKey}`);
+  schedule.sort(() => scheduleRng.next() - 0.5);
+
+  S.season = {
+    standings,
+    schedule,
+    currentRound: 0,
+    stage: 'REGULAR',
+    midSplitEventTriggered: false
+  };
+
+  // Start the match loop
+  playSeasonStep();
+
+  function playSeasonStep() {
+    board(1);
+    const season = S.season;
+    
+    if (season.stage === 'REGULAR') {
+      // Trigger a mid-split event at Round 4 (index 3)
+      if (season.currentRound === 3 && !season.midSplitEventTriggered) {
+        season.midSplitEventTriggered = true;
+        triggerMidSplitEvent();
+        return;
       }
-    },
-    {
-      t: '⚡ 快速模擬本系列賽',
-      s: '系統依綜合戰力直接計算勝負',
-      f: () => {
-        const won = rng.next() < (pOvr / 100);
-        S.stats.matchesPlayed += 7;
-        S.stats.matchesWon += won ? 5 : 2;
-        card(won ? 'good' : 'bad', `${splitInfo.name} 常規賽戰報`, `系列賽以 <b class="${won ? 'up' : 'dn'}">${won ? '2:0 獲勝' : '1:2 惜敗'}</b> 結束。`);
-        proceedSplitPostMatch(splitKey, splitInfo, won, onSplitDone);
-      }
-    }
-  ]);
-}
-
-function proceedSplitPostMatch(splitKey, splitInfo, won, onSplitDone) {
-  // 賽季事件
-  const ev = getRandomEvent(rng, S.age);
-  choose(`賽事事件：${ev.title}`, ev.choices.map(c => ({
-    t: c.text,
-    s: `決策：${c.type}`,
-    f: () => {
-      card('info', ev.title, c.effect.log);
-      board(1);
-
-      // 季後賽 BO5
-      const pOvr = ovr();
-      const winPlayoffs = won && (rng.next() < (pOvr / 105));
-      if (winPlayoffs) {
-        S.stats.titlesWon += 1;
-        S.popularity += 20;
-        card('gold', `🏆 榮獲 ${splitInfo.name} 賽區總冠軍！`, `你在 BO5 總決賽決勝局上演神級開戰，率隊奪得冠軍獎盃與季後賽 MVP！`);
-        tlPush(`LCP 冠軍 (${splitInfo.shortName})`);
+      
+      if (season.currentRound < season.schedule.length) {
+        const roundNum = season.currentRound + 1;
+        const matchInfo = season.schedule[season.currentRound];
+        const nextOpp = getTeamById(matchInfo.oppTeamId) || TEAMS[0];
+        
+        choose(`${splitInfo.name} · 第 ${roundNum}/${season.schedule.length} 輪對決 (${nextOpp.name})`, [
+          {
+            t: '🎮 親自出戰 (進入 BP 選角 & 7 階段決策)',
+            main: true,
+            s: '手動選擇英雄、版本黑科技與關鍵對線/團戰策略',
+            f: () => {
+              interactiveBPDraft(nextOpp, meta, (won) => {
+                resolveProMatchResult(won);
+              });
+            }
+          },
+          {
+            t: '⚡ 快速模擬此輪',
+            s: '系統依綜合實力直接計算本場勝負',
+            f: () => {
+              const pOvr = ovr();
+              const won = rng.next() < (pOvr / 100);
+              resolveProMatchResult(won);
+            }
+          },
+          {
+            t: '⏩ 快速模擬剩餘所有例行賽',
+            s: '一鍵跳過例行賽階段，由 AI 跑完所有剩餘輪次',
+            f: () => {
+              const pOvr = ovr();
+              card('info', '⏩ 正在模擬剩餘例行賽...', '全隊正在高強度備戰，AI 將為您完成剩餘的所有輪次對決。');
+              while (season.currentRound < season.schedule.length) {
+                const curMatch = season.schedule[season.currentRound];
+                const curOpp = getTeamById(curMatch.oppTeamId);
+                const won = rng.next() < (pOvr / 100);
+                
+                // Update standings
+                if (won) {
+                  season.standings[S.teamId].wins++;
+                  season.standings[curOpp.id].losses++;
+                  curMatch.won = true;
+                  S.stats.matchesPlayed += 3;
+                  S.stats.matchesWon += 2;
+                } else {
+                  season.standings[S.teamId].losses++;
+                  season.standings[curOpp.id].wins++;
+                  curMatch.won = false;
+                  S.stats.matchesPlayed += 3;
+                  S.stats.matchesWon += 1;
+                }
+                curMatch.isFinished = true;
+                
+                // Simulate other teams
+                simulateOtherTeams(curOpp.id);
+                season.currentRound++;
+              }
+              
+              card('good', '例行賽全部模擬完畢！', `例行賽最終戰績為：<b class="hl">${season.standings[S.teamId].wins} 勝 ${season.standings[S.teamId].losses} 敗</b>`);
+              showStandingsCard();
+              
+              checkPlayoffsQualification();
+            }
+          },
+          {
+            t: '📊 查看當前聯賽積分榜',
+            s: '查看當前賽區內各戰隊的勝敗排名',
+            f: () => {
+              showStandingsCard();
+              playSeasonStep();
+            }
+          }
+        ]);
+        
       } else {
-        card('info', `${splitInfo.name} 季後賽結算`, `在半決賽鏖戰五局惜敗，獲得季軍。`);
+        checkPlayoffsQualification();
       }
-
-      // 國際賽 (First Stand / MSI / Worlds)
-      if (splitInfo.qualifiesFor) {
-        const tourney = INTERNATIONAL_TOURNAMENTS[splitInfo.qualifiesFor];
-        const worldRoll = rng.range(1, 100);
-        if (worldRoll >= 72 && pOvr >= 68) {
-          S.stats.intlTitles += 1;
-          if (tourney.id === 'WORLDS') {
-            S.stats.worldsTitles += 1;
-            S.popularity += 50;
-            card('gold', `🏆【世界之巔】${tourney.name} 總冠軍 & FMVP！`, `在全球數千萬觀眾矚目下，你在總決賽斬落 LCK 豪門，捧起召喚師獎盃！名留青史！`);
-            tlPush('世界大賽冠軍 🏆');
-            unlockTrait('BIG_STAGE_HERO');
-          } else {
-            card('gold', `🏆 榮獲 ${tourney.name} 國際賽冠軍！`, `擊敗各大賽區強隊，登頂國際舞台！`);
+      
+    } else if (season.stage === 'PLAYOFFS_SEMI') {
+      const opp = getPlayoffsOpponent('SEMI');
+      if (!opp) {
+        proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone);
+        return;
+      }
+      choose(`🏆 季後賽準決賽 BO5 (${opp.name})`, [
+        {
+          t: '🎮 親自出戰 (代表決勝局 2:2 生死戰)',
+          main: true,
+          s: '手動選擇英雄，贏下這一局即可挺進總決賽！',
+          f: () => {
+            interactiveBPDraft(opp, meta, (won) => {
+              resolvePlayoffsSemi(won);
+            });
+          }
+        },
+        {
+          t: '⚡ 快速模擬準決賽',
+          s: '系統直接計算 BO5 對決勝負',
+          f: () => {
+            const pOvr = ovr();
+            const won = rng.next() < (pOvr / 105);
+            resolvePlayoffsSemi(won);
           }
         }
+      ]);
+      
+    } else if (season.stage === 'PLAYOFFS_FINAL') {
+      const opp = getPlayoffsOpponent('FINAL');
+      if (!opp) {
+        proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone);
+        return;
       }
+      choose(`🏆 季後賽總決賽 BO5 (${opp.name})`, [
+        {
+          t: '🎮 親自出戰 (代表總決賽 2:2 冠軍點決戰)',
+          main: true,
+          s: '手動進行選角與戰術對決，捧起冠軍獎盃與 FMVP 榮譽！',
+          f: () => {
+            interactiveBPDraft(opp, meta, (won) => {
+              resolvePlayoffsFinal(won);
+            });
+          }
+        },
+        {
+          t: '⚡ 快速模擬總決賽',
+          s: '系統直接計算總冠軍歸屬',
+          f: () => {
+            const pOvr = ovr();
+            const won = rng.next() < (pOvr / 110);
+            resolvePlayoffsFinal(won);
+          }
+        }
+      ]);
+      
+    } else if (season.stage === 'INTERNATIONAL') {
+      const intlOppId = region === 'LCK' ? 'BG' : 'AO';
+      const intlOpp = getTeamById(intlOppId) || TEAMS[8];
+      const tourneyInfo = INTERNATIONAL_TOURNAMENTS[splitInfo.qualifiesFor];
+      
+      choose(`🌐 ${tourneyInfo.name} 淘汰賽淘汰局 (${intlOpp.name})`, [
+        {
+          t: '🎮 親自出戰 (代表國際賽關鍵死鬥局)',
+          main: true,
+          s: '與世界頂級賽區豪門對決，挑戰國際之巔！',
+          f: () => {
+            interactiveBPDraft(intlOpp, meta, (won) => {
+              resolveInternationalMatch(won, tourneyInfo);
+            });
+          }
+        },
+        {
+          t: '⚡ 快速模擬國際賽',
+          s: '系統依綜合實力計算世界賽果',
+          f: () => {
+            const pOvr = ovr();
+            const won = rng.next() < (pOvr / 115);
+            resolveInternationalMatch(won, tourneyInfo);
+          }
+        }
+      ]);
+    }
+  }
 
-      choose(`${splitInfo.name} 完畢`, [{
-        t: '繼續推進賽程 ▸',
+  function triggerMidSplitEvent() {
+    const ev = getRandomEvent(rng, S.age);
+    choose(`賽事事件：${ev.title}`, ev.choices.map(c => ({
+      t: c.text,
+      s: `決策：${c.type}`,
+      f: () => {
+        card('info', ev.title, c.effect.log);
+        if (c.effect.mechanicsExp) addAb('mechanics', 2);
+        if (c.effect.macroExp) addAb('macro', 2);
+        if (c.effect.fatigue !== undefined) S.fatigue = Math.max(0, Math.min(100, S.fatigue + c.effect.fatigue));
+        if (c.effect.wristHealth !== undefined) S.wristHealth = Math.max(0, Math.min(100, S.wristHealth + c.effect.wristHealth));
+        if (c.effect.coachTrust !== undefined) S.coachTrust = Math.max(0, Math.min(100, S.coachTrust + c.effect.coachTrust));
+        if (c.effect.popularity !== undefined) S.popularity = Math.max(0, S.popularity + c.effect.popularity);
+        
+        board(1);
+        
+        choose('事件結束', [{
+          t: '繼續推進賽季 ▸',
+          main: true,
+          f: () => playSeasonStep()
+        }]);
+      }
+    })));
+  }
+
+  function resolveProMatchResult(won) {
+    const season = S.season;
+    const matchInfo = season.schedule[season.currentRound];
+    const opp = getTeamById(matchInfo.oppTeamId);
+    
+    if (won) {
+      season.standings[S.teamId].wins++;
+      season.standings[opp.id].losses++;
+      matchInfo.won = true;
+      S.stats.matchesPlayed += 3;
+      S.stats.matchesWon += 2;
+      card('good', `第 ${season.currentRound + 1} 輪 常規賽戰報`, `你成功率領隊伍以 <b class="up">2:0 橫掃 ${opp.name}</b>！`);
+    } else {
+      season.standings[S.teamId].losses++;
+      season.standings[opp.id].wins++;
+      matchInfo.won = false;
+      S.stats.matchesPlayed += 3;
+      S.stats.matchesWon += 1;
+      card('bad', `第 ${season.currentRound + 1} 輪 常規賽戰報`, `隊伍配合出現失誤，以 <b class="dn">1:2 憾負 ${opp.name}</b>。`);
+    }
+    matchInfo.isFinished = true;
+    
+    simulateOtherTeams(opp.id);
+    
+    season.currentRound++;
+    choose('本輪結束', [{
+      t: '繼續推進賽程 ▸',
+      main: true,
+      f: () => playSeasonStep()
+    }]);
+  }
+
+  function simulateOtherTeams(excludeOppId) {
+    const regionTeams = TEAMS.filter(t => t.region === region && t.id !== S.teamId && t.id !== excludeOppId);
+    const shuffled = [...regionTeams].sort(() => rng.next() - 0.5);
+    for (let i = 0; i < shuffled.length; i += 2) {
+      if (i + 1 < shuffled.length) {
+        const t1 = shuffled[i];
+        const t2 = shuffled[i+1];
+        const p1 = t1.baseRating || 72;
+        const p2 = t2.baseRating || 72;
+        const winProb = p1 / (p1 + p2);
+        if (rng.next() < winProb) {
+          S.season.standings[t1.id].wins++;
+          S.season.standings[t2.id].losses++;
+        } else {
+          S.season.standings[t2.id].wins++;
+          S.season.standings[t1.id].losses++;
+        }
+      }
+    }
+  }
+
+  function showStandingsCard() {
+    const list = Object.keys(S.season.standings).map(id => ({
+      id,
+      name: getTeamById(id)?.shortName || id,
+      wins: S.season.standings[id].wins,
+      losses: S.season.standings[id].losses
+    }));
+    list.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+    
+    let tableRows = list.map((t, idx) => {
+      const isPlayer = t.id === S.teamId;
+      return `
+        <tr style="${isPlayer ? 'color:var(--accent); font-weight:bold;' : ''}">
+          <td style="text-align:left;padding:6px 4px;border-bottom:1px solid var(--edge);">#${idx+1}</td>
+          <td style="text-align:left;padding:6px 4px;border-bottom:1px solid var(--edge);">${t.name}${isPlayer ? ' (YOU)' : ''}</td>
+          <td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--edge);">${t.wins}</td>
+          <td style="text-align:right;padding:6px 4px;border-bottom:1px solid var(--edge);">${t.losses}</td>
+        </tr>
+      `;
+    }).join('');
+    
+    card('info', '📊 聯賽積分榜', `
+      <table class="st" style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead>
+          <tr style="color:var(--dim);border-bottom:1px solid var(--edge);">
+            <th style="text-align:left;padding:4px;">排名</th>
+            <th style="text-align:left;padding:4px;">戰隊</th>
+            <th style="text-align:right;padding:4px 8px;">勝</th>
+            <th style="text-align:right;padding:4px;">負</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows}
+        </tbody>
+      </table>
+    `);
+  }
+
+  function checkPlayoffsQualification() {
+    const season = S.season;
+    const list = Object.keys(season.standings).map(id => ({
+      id,
+      wins: season.standings[id].wins,
+      losses: season.standings[id].losses
+    }));
+    list.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+    
+    const rank = list.findIndex(t => t.id === S.teamId) + 1;
+    
+    card('info', '例行賽全部結束', `例行賽最終排名：第 <b class="hl">#${rank} 名</b> (${season.standings[S.teamId].wins} 勝 ${season.standings[S.teamId].losses} 敗)`);
+    
+    if (rank <= 4) {
+      card('good', '🎉 晉級季後賽！', '恭喜隊伍成功殺入季後賽四強席位！我們將在準決賽中迎戰強敵。');
+      season.stage = 'PLAYOFFS_SEMI';
+      choose('例行賽結算', [{
+        t: '開啟季後賽準決賽 BO5 ▸',
         main: true,
-        f: onSplitDone
+        f: () => playSeasonStep()
+      }]);
+    } else {
+      card('bad', '❌ 止步例行賽', '遺憾！隊伍因積分不足未能進入季後賽四強，無緣本次季後賽與世界大賽舞台。');
+      season.stage = 'ELIMINATED';
+      choose('例行賽結算', [{
+        t: '繼續推進 ▸',
+        main: true,
+        f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone)
       }]);
     }
-  })));
+  }
+
+  function getPlayoffsOpponent(round) {
+    const season = S.season;
+    const list = Object.keys(season.standings).map(id => ({
+      id,
+      wins: season.standings[id].wins,
+      losses: season.standings[id].losses
+    }));
+    list.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+    
+    const playerRank = list.findIndex(t => t.id === S.teamId) + 1;
+    
+    if (round === 'SEMI') {
+      let oppRank = 4;
+      if (playerRank === 4) oppRank = 1;
+      else if (playerRank === 2) oppRank = 3;
+      else if (playerRank === 3) oppRank = 2;
+      
+      const oppId = list[oppRank - 1].id;
+      return getTeamById(oppId);
+    } else if (round === 'FINAL') {
+      const opp = list.find(t => t.id !== S.teamId);
+      return getTeamById(opp.id);
+    }
+    return null;
+  }
+
+  function resolvePlayoffsSemi(won) {
+    const season = S.season;
+    if (won) {
+      card('gold', '🏆 挺進總決賽！', '隊伍在準決賽 BO5 大獲全勝！成功擊敗對手，晉級 LCP 總決賽，我們距離冠軍只差一步之遙！');
+      season.stage = 'PLAYOFFS_FINAL';
+      choose('準決賽結束', [{
+        t: '進入 LCP 總決賽 ▸',
+        main: true,
+        f: () => playSeasonStep()
+      }]);
+    } else {
+      card('bad', '季後賽準決賽出局', '在準決賽鏖戰五局惜敗，獲得本季季軍。');
+      season.stage = 'PLAYOFFS_LOST';
+      choose('準決賽結束', [{
+        t: '繼續推進 ▸',
+        main: true,
+        f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone)
+      }]);
+    }
+  }
+
+  function resolvePlayoffsFinal(won) {
+    const season = S.season;
+    if (won) {
+      S.stats.titlesWon += 1;
+      S.popularity += 25;
+      card('gold', `🏆 榮獲 ${splitInfo.name} 賽區總冠軍！`, '你在總決賽決勝局上演天秀繞後秒殺雙C！帶領全隊捧起冠軍銀盃，榮膺季後賽 MVP (FMVP)！');
+      
+      if (splitInfo.qualifiesFor) {
+        season.stage = 'INTERNATIONAL';
+        choose('決賽結束', [{
+          t: `進軍 ${INTERNATIONAL_TOURNAMENTS[splitInfo.qualifiesFor].name} 國際賽 ▸`,
+          main: true,
+          f: () => playSeasonStep()
+        }]);
+      } else {
+        choose('決賽結束', [{
+          t: '繼續推進 ▸',
+          main: true,
+          f: () => proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone)
+        }]);
+      }
+    } else {
+      S.popularity += 10;
+      card('good', '榮獲 LCP 總決賽亞軍！', '在總決賽打滿五局憾負，獲得賽區亞軍席位。');
+      
+      const qualifiesFor = splitInfo.qualifiesFor;
+      const runnerUpQualifies = (qualifiesFor === 'MSI' || qualifiesFor === 'WORLDS');
+      
+      if (qualifiesFor && runnerUpQualifies) {
+        season.stage = 'INTERNATIONAL';
+        choose('決賽結束', [{
+          t: `以亞軍身分出征 ${INTERNATIONAL_TOURNAMENTS[qualifiesFor].name} ▸`,
+          main: true,
+          f: () => playSeasonStep()
+        }]);
+      } else {
+        choose('決賽結束', [{
+          t: '繼續推進 ▸',
+          main: true,
+          f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone)
+        }]);
+      }
+    }
+  }
+
+  function resolveInternationalMatch(won, tourneyInfo) {
+    if (won) {
+      S.stats.intlTitles += 1;
+      if (tourneyInfo.id === 'WORLDS') {
+        S.stats.worldsTitles += 1;
+        S.popularity += 50;
+        card('gold', `🏆【世界之巔】${tourneyInfo.name} 總冠軍 & FMVP！`, '在全球數千萬玩家矚目下，你在總決賽世界之巔力挽狂瀾！率隊奪下召喚師水晶杯，榮膺世界總決賽 FMVP！名留青史！');
+        unlockTrait('BIG_STAGE_HERO');
+      } else {
+        S.popularity += 30;
+        card('gold', `🏆 榮獲 ${tourneyInfo.name} 國際賽總冠軍！`, `擊敗世界頂級賽區各路豪強，登頂 ${tourneyInfo.name} 冠軍寶座！`);
+      }
+      
+      choose('世界賽結束', [{
+        t: '繼續推進 ▸',
+        main: true,
+        f: () => proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone)
+      }]);
+    } else {
+      card('info', `世界賽出局`, `在 ${tourneyInfo.name} 淘汰賽階段拼盡全力，遺憾止步四強。`);
+      choose('世界賽結束', [{
+        t: '繼續推進 ▸',
+        main: true,
+        f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone)
+      }]);
+    }
+  }
+
+  function proceedToSplitSettlement(splitKey, splitInfo, wonChamp, onSplitDone) {
+    S.fatigue = Math.min(100, S.fatigue + 15);
+    S.stress = Math.max(0, S.stress - 10);
+    
+    if (wonChamp) {
+      tlPush(`${splitInfo.shortName} 冠軍 🏆`);
+    } else if (S.season.stage === 'PLAYOFFS_FINAL') {
+      tlPush(`${splitInfo.shortName} 亞軍`);
+    } else {
+      tlPush(`${splitInfo.shortName} 完畢`);
+    }
+    
+    choose(`${splitInfo.name} 完畢`, [{
+      t: '繼續推進賽程 ▸',
+      main: true,
+      f: onSplitDone
+    }]);
+  }
 }
 
 // 4. 轉會市場與 LCK/LPL 旅外
