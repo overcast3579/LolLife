@@ -1610,63 +1610,151 @@ function runProSplit(splitKey, onSplitDone) {
       const opp = getPlayoffsOpponent('SEMI');
       if (!opp) { proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone); return; }
       const isPlayerStarter = S.rosterStatus === 'STARTER';
-      choose(`🏆 季後賽準決賽 BO5 (${opp.name})`, [
-        {
-          t: '🎮 進入決勝局對決 (決勝生死戰)',
-          main: true,
-          disabled: !isPlayerStarter,
-          s: isPlayerStarter ? (S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動選擇英雄，贏下這一局即可挺進總決賽！') : '💺 您目前是替補，無法代表戰隊出戰關鍵對局',
-          f: () => {
-            if (!isPlayerStarter) {
-              card('bad', '無法上場', '您目前是替補，教練派上了首發隊友打完這局生死戰。');
+      
+      if (isPlayerStarter) {
+        choose(`🏆 季後賽準決賽 BO5 (${opp.name})`, [
+          {
+            t: '🎮 進入決勝局對決 (決勝生死戰)',
+            main: true,
+            s: S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動選擇英雄，贏下這一局即可挺進總決賽！',
+            f: () => {
+              interactiveBPDraft(opp, meta, (won) => { resolvePlayoffsSemi(won, true); });
+            }
+          },
+          {
+            t: '📊 查看當前狀態與先發競爭數據',
+            s: '查看您的手腕健康、疲勞值、教練信任度以及競爭對手能力',
+            f: () => { showPlayerCompetitorStats(); }
+          },
+          {
+            t: '⚡ 快速模擬準決賽',
+            s: '系統直接計算 BO5 對決勝負',
+            f: () => {
+              const teamOvr = ovr() + getTacticModifier();
+              const won = rng.next() < (teamOvr / 105);
+              resolvePlayoffsSemi(won, false);
+            }
+          }
+        ]);
+      } else {
+        choose(`💺 替補席備戰 · 季後賽準決賽 BO5 (${opp.name})`, [
+          {
+            t: '⚡ 快速模擬此輪 (為隊友加油)',
+            main: true,
+            s: '因您目前在替補席，將由二隊替補選手代替您上場出戰',
+            f: () => {
               const won = rng.next() < (S.benchCompetitorOvr / 105);
               resolvePlayoffsSemi(won, false);
-              return;
             }
-            interactiveBPDraft(opp, meta, (won) => { resolvePlayoffsSemi(won, true); });
+          },
+          {
+            t: '📊 查看當前狀態與先發競爭數據',
+            main: true,
+            s: '查看您的手腕健康、疲勞值、教練信任度以及競爭對手能力',
+            f: () => { showPlayerCompetitorStats(); }
+          },
+          {
+            t: '🏋️ 進行瘋狂自主加練',
+            s: '在訓練室狂打 Rank。操作與觀念微幅提升，但大幅消耗疲勞與手腕健康',
+            f: () => {
+              addAb('mechanics', 1);
+              addAb('macro', 1);
+              S.fatigue = Math.min(100, S.fatigue + 20);
+              S.wristHealth = Math.max(0, S.wristHealth - 8);
+              card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀更上了一層樓！');
+              const won = rng.next() < (S.benchCompetitorOvr / 105);
+              resolvePlayoffsSemi(won, false);
+            }
+          },
+          {
+            t: '💬 主動與教練進行戰術溝通',
+            s: '主動找教練討論比賽細節，提升教練信任度',
+            f: () => {
+              const trustGain = rng.range(8, 18);
+              S.coachTrust = Math.min(100, S.coachTrust + trustGain);
+              S.fatigue = Math.min(100, S.fatigue + 5);
+              card('good', '與教練戰術溝通', `快拿著筆記本找主教練討論戰術。教練對你的敬業態度深感欣慰！信任度提升 ${trustGain} 點！`);
+              const won = rng.next() < (S.benchCompetitorOvr / 105);
+              resolvePlayoffsSemi(won, false);
+            }
           }
-        },
-        {
-          t: '⚡ 快速模擬準決賽',
-          s: '系統直接計算 BO5 對決勝負',
-          f: () => {
-            const teamOvr = isPlayerStarter ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
-            const won = rng.next() < (teamOvr / 105);
-            resolvePlayoffsSemi(won, false);
-          }
-        }
-      ]);
+        ]);
+      }
       
     } else if (season.stage === 'PLAYOFFS_FINAL') {
       const opp = getPlayoffsOpponent('FINAL');
       if (!opp) { proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone); return; }
       const isPlayerStarter = S.rosterStatus === 'STARTER';
-      choose(`🏆 季後賽總決賽 BO5 (${opp.name})`, [
-        {
-          t: '🎮 進入總決賽對決 (總冠軍點生死戰)',
-          main: true,
-          disabled: !isPlayerStarter,
-          s: isPlayerStarter ? (S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動進行選角與戰術對決，捧起冠軍獎盃與 FMVP 榮譽！') : '💺 您目前是替補，無法代表戰隊出戰決賽',
-          f: () => {
-            if (!isPlayerStarter) {
-              card('bad', '無法上場', '您目前是替補，只能在台下為決賽的先發隊友鼓掌。');
+      
+      if (isPlayerStarter) {
+        choose(`🏆 季後賽總決賽 BO5 (${opp.name})`, [
+          {
+            t: '🎮 進入總決賽對決 (總冠軍點生死戰)',
+            main: true,
+            s: S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動進行選角與戰術對決，捧起冠軍獎盃與 FMVP 榮譽！',
+            f: () => {
+              interactiveBPDraft(opp, meta, (won) => { resolvePlayoffsFinal(won, true); });
+            }
+          },
+          {
+            t: '📊 查看當前狀態與先發競爭數據',
+            s: '查看您的手腕健康、疲勞值、教練信任度以及競爭對手能力',
+            f: () => { showPlayerCompetitorStats(); }
+          },
+          {
+            t: '⚡ 快速模擬總決賽',
+            s: '系統直接計算總冠軍歸屬',
+            f: () => {
+              const teamOvr = ovr() + getTacticModifier();
+              const won = rng.next() < (teamOvr / 110);
+              resolvePlayoffsFinal(won, false);
+            }
+          }
+        ]);
+      } else {
+        choose(`💺 替補席備戰 · 季後賽總決賽 BO5 (${opp.name})`, [
+          {
+            t: '⚡ 快速模擬此輪 (為隊友加油)',
+            main: true,
+            s: '因您目前在替補席，將由二隊替補選手代替您上場出戰',
+            f: () => {
               const won = rng.next() < (S.benchCompetitorOvr / 110);
               resolvePlayoffsFinal(won, false);
-              return;
             }
-            interactiveBPDraft(opp, meta, (won) => { resolvePlayoffsFinal(won, true); });
+          },
+          {
+            t: '📊 查看當前狀態與先發競爭數據',
+            main: true,
+            s: '查看您的手腕健康、疲勞值、教練信任度以及競爭對手能力',
+            f: () => { showPlayerCompetitorStats(); }
+          },
+          {
+            t: '🏋️ 進行瘋狂自主加練',
+            s: '在訓練室狂打 Rank。操作與觀念微幅提升，但大幅消耗疲勞與手腕健康',
+            f: () => {
+              addAb('mechanics', 1);
+              addAb('macro', 1);
+              S.fatigue = Math.min(100, S.fatigue + 20);
+              S.wristHealth = Math.max(0, S.wristHealth - 8);
+              card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀更上了一層樓！');
+              const won = rng.next() < (S.benchCompetitorOvr / 110);
+              resolvePlayoffsFinal(won, false);
+            }
+          },
+          {
+            t: '💬 主動與教練進行戰術溝通',
+            s: '主動找教練討論比賽細節，提升教練信任度',
+            f: () => {
+              const trustGain = rng.range(8, 18);
+              S.coachTrust = Math.min(100, S.coachTrust + trustGain);
+              S.fatigue = Math.min(100, S.fatigue + 5);
+              card('good', '與教練戰術溝通', `快拿著筆記本找主教練討論戰術。教練對你的敬業態度深感欣慰！信任度提升 ${trustGain} 點！`);
+              const won = rng.next() < (S.benchCompetitorOvr / 110);
+              resolvePlayoffsFinal(won, false);
+            }
           }
-        },
-        {
-          t: '⚡ 快速模擬總決賽',
-          s: '系統直接計算總冠軍歸屬',
-          f: () => {
-            const teamOvr = isPlayerStarter ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
-            const won = rng.next() < (teamOvr / 110);
-            resolvePlayoffsFinal(won, false);
-          }
-        }
-      ]);
+        ]);
+      }
       
     } else if (season.stage === 'INTERNATIONAL') {
       const intlOppId = region === 'LCK' ? 'BG' : 'AO';
@@ -1674,33 +1762,75 @@ function runProSplit(splitKey, onSplitDone) {
       const tourneyInfo = INTERNATIONAL_TOURNAMENTS[splitInfo.qualifiesFor];
       const isPlayerStarter = S.rosterStatus === 'STARTER';
       
-      // Stop and ALWAYS ask before simulating international matches!
-      choose(`🌐 ${tourneyInfo.name} 淘汰賽階段`, [
-        {
-          t: '🎮 親自出戰 (手動 BP & 決勝對局)',
-          main: true,
-          disabled: !isPlayerStarter,
-          s: isPlayerStarter ? (S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '與世界頂級賽區豪門對決，挑戰國際之巔！') : '💺 您目前是替補，無緣出戰國際賽淘汰賽',
-          f: () => {
-            if (!isPlayerStarter) {
-              card('bad', '無法上場', '您目前在替補席觀戰，隊友代表出戰。');
+      if (isPlayerStarter) {
+        choose(`🌐 ${tourneyInfo.name} 淘汰賽階段`, [
+          {
+            t: '🎮 親自出戰 (手動 BP & 決勝對局)',
+            main: true,
+            s: S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '與世界頂級賽區豪門對決，挑戰國際之巔！',
+            f: () => {
+              interactiveBPDraft(intlOpp, meta, (won) => { resolveInternationalMatch(won, tourneyInfo, true); });
+            }
+          },
+          {
+            t: '📊 查看當前狀態與先發競爭數據',
+            s: '查看您的手腕健康、疲勞值、教練信任度以及競爭對手能力',
+            f: () => { showPlayerCompetitorStats(); }
+          },
+          {
+            t: '⚡ 快速模擬此國際賽事',
+            s: '系統依綜合實力計算世界賽果',
+            f: () => {
+              const teamOvr = ovr() + getTacticModifier();
+              const won = rng.next() < (teamOvr / 115);
+              resolveInternationalMatch(won, tourneyInfo, false);
+            }
+          }
+        ]);
+      } else {
+        choose(`💺 替補席備戰 · 🌐 ${tourneyInfo.name} 淘汰賽`, [
+          {
+            t: '⚡ 快速模擬此輪 (為隊友加油)',
+            main: true,
+            s: '因您目前在替補席，將由二隊替補選手代替您上場出戰',
+            f: () => {
               const won = rng.next() < (S.benchCompetitorOvr / 115);
               resolveInternationalMatch(won, tourneyInfo, false);
-              return;
             }
-            interactiveBPDraft(intlOpp, meta, (won) => { resolveInternationalMatch(won, tourneyInfo, true); });
+          },
+          {
+            t: '📊 查看當前狀態與先發競爭數據',
+            main: true,
+            s: '查看您的手腕健康、疲勞值、教練信任度以及競爭對手能力',
+            f: () => { showPlayerCompetitorStats(); }
+          },
+          {
+            t: '🏋️ 進行瘋狂自主加練',
+            s: '在訓練室狂打 Rank。操作與觀念微幅提升，但大幅消耗疲勞與手腕健康',
+            f: () => {
+              addAb('mechanics', 1);
+              addAb('macro', 1);
+              S.fatigue = Math.min(100, S.fatigue + 20);
+              S.wristHealth = Math.max(0, S.wristHealth - 8);
+              card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀更上了一層樓！');
+              const won = rng.next() < (S.benchCompetitorOvr / 115);
+              resolveInternationalMatch(won, tourneyInfo, false);
+            }
+          },
+          {
+            t: '💬 主動與教練進行戰術溝通',
+            s: '主動找教練討論比賽細節，提升教練信任度',
+            f: () => {
+              const trustGain = rng.range(8, 18);
+              S.coachTrust = Math.min(100, S.coachTrust + trustGain);
+              S.fatigue = Math.min(100, S.fatigue + 5);
+              card('good', '與教練戰術溝通', `快拿著筆記本找主教練討論戰術。教練對你的敬業態度深感欣慰！信任度提升 ${trustGain} 點！`);
+              const won = rng.next() < (S.benchCompetitorOvr / 115);
+              resolveInternationalMatch(won, tourneyInfo, false);
+            }
           }
-        },
-        {
-          t: '⚡ 快速模擬此國際賽事',
-          s: '系統依綜合實力計算世界賽果',
-          f: () => {
-            const teamOvr = isPlayerStarter ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
-            const won = rng.next() < (teamOvr / 115);
-            resolveInternationalMatch(won, tourneyInfo, false);
-          }
-        }
-      ]);
+        ]);
+      }
     }
   }
 
