@@ -1302,25 +1302,35 @@ function phaseAmateurTryouts() {
     offers.push({ teamId: 'TW_AMATEUR_ROOKIE', teamName: '星火青年電競培訓隊 (SEC)', status: 'Amateur', salary: 150000, desc: '業餘培訓合約' });
   }
 
+  // Generate competitor OVR for each tryout offer
+  offers.forEach(o => {
+    const teamObj = getTeamById(o.teamId);
+    const teamBaseRating = teamObj ? teamObj.baseRating : (o.status === 'Amateur' ? 52 : 65);
+    o.competitorOvr = rng.range(teamBaseRating - 3, teamBaseRating + 2);
+  });
+
   card('info', '試訓結果出爐', `各大俱樂部管理層與教練在實機測試後給予了極高評價，送來了正式簽約意向書！`);
 
-  choose('請選擇你的首份簽約戰隊：', offers.map(o => ({
-    t: `✍️ 簽約 ${o.teamName}`,
-    main: true,
-    s: `${o.desc} · 年薪 $${o.salary.toLocaleString()} 元`,
-    f: () => {
-      S.teamId = o.teamId;
-      S.team = o.teamName;
-      S.salary = o.salary;
-      S.money += Math.round(o.salary * 0.3);
-      S.stage = o.status === 'Amateur' ? 'AMATEUR' : 'PRO';
-      S.rosterStatus = o.status === 'Starter' ? 'STARTER' : 'SUB';
-      const teamObj = getTeamById(o.teamId);
-      const teamBaseRating = teamObj ? teamObj.baseRating : 65;
-      S.benchCompetitorOvr = rng.range(teamBaseRating - 3, teamBaseRating + 2);
-      S.tactics = { banPickPreference: 'META', style: 'BALANCED' };
-      card('gold', '加盟正式簽約', `你正式簽約加盟 <b class="hl">${o.teamName}</b>！開啟職業電競新篇章！`);
-      tlPush(o.status === 'Starter' ? '登陸 LCP' : '加入青訓');
+  choose('請選擇你的首份簽約戰隊：', offers.map(o => {
+    const myOvr = ovr();
+    const canBeStarter = o.status === 'Starter' || myOvr >= o.competitorOvr;
+    const statusTxt = canBeStarter ? '🟢 預計先發' : `🔴 預計替補 (需追趕 ${o.competitorOvr - myOvr} OVR)`;
+
+    return {
+      t: `✍️ 簽約 ${o.teamName}`,
+      main: true,
+      s: `${o.desc} · 年薪 $${o.salary.toLocaleString()} 元<br><small style="color:var(--dim);">競爭對手 OVR: <b>${o.competitorOvr}</b> | ${statusTxt}</small>`,
+      f: () => {
+        S.teamId = o.teamId;
+        S.team = o.teamName;
+        S.salary = o.salary;
+        S.money += Math.round(o.salary * 0.3);
+        S.stage = o.status === 'Amateur' ? 'AMATEUR' : 'PRO';
+        S.rosterStatus = (o.status === 'Starter' || canBeStarter) ? 'STARTER' : 'SUB';
+        S.benchCompetitorOvr = o.competitorOvr;
+        S.tactics = { banPickPreference: 'META', style: 'BALANCED' };
+        card('gold', '加盟正式簽約', `你正式簽約加盟 <b class="hl">${o.teamName}</b>！職位：${S.rosterStatus === 'STARTER' ? '<b class="hl">先發選手</b>' : '<b class="warn">替補選手</b>'}`);
+        tlPush(o.status === 'Starter' ? '登陸 LCP' : '加入青訓');
 
       choose('賽季結束', [{
         t: '進入下一年 ▸ 2027 (17歲 職業新賽季)',
@@ -2744,43 +2754,71 @@ function phaseYearEndTransfer() {
     teamName: S.team,
     teamId: S.teamId,
     salary: Math.round(S.salary * rng.range(105, 125) / 100),
-    desc: '原戰隊核心頂薪續約'
+    desc: '原戰隊核心頂薪續約',
+    competitorOvr: S.benchCompetitorOvr || 65
   });
 
   // 國內豪門
   if (pOvr >= 66) {
-    offers.push({ teamName: 'Flying Steel Gaming (飛鋼電競)', teamId: 'FSG', salary: 3200000, desc: 'LCP 頂薪邀請' });
+    const fsgRating = getTeamById('FSG')?.baseRating || 78;
+    offers.push({
+      teamName: 'Flying Steel Gaming (飛鋼電競)',
+      teamId: 'FSG',
+      salary: 3200000,
+      desc: 'LCP 頂薪邀請',
+      competitorOvr: rng.range(fsgRating - 3, fsgRating + 2)
+    });
   }
 
   // 旅外 LCK / LPL
   if (pOvr >= 72 || S.stats.worldsTitles >= 1) {
-    offers.push({ teamName: 'Apex One (南韓 LCK 豪門 AO)', teamId: 'AO', salary: 16000000, desc: 'LCK 天價旅外挑戰' });
-    offers.push({ teamName: 'Byte Gaming (中國 LPL 頂級隊 BG)', teamId: 'BG', salary: 19000000, desc: 'LPL 頂級全華班' });
+    const aoRating = getTeamById('AO')?.baseRating || 88;
+    const bgRating = getTeamById('BG')?.baseRating || 88;
+    offers.push({
+      teamName: 'Apex One (南韓 LCK 豪門 AO)',
+      teamId: 'AO',
+      salary: 16000000,
+      desc: 'LCK 天價旅外挑戰',
+      competitorOvr: rng.range(aoRating - 3, aoRating + 2)
+    });
+    offers.push({
+      teamName: 'Byte Gaming (中國 LPL 頂級隊 BG)',
+      teamId: 'BG',
+      salary: 19000000,
+      desc: 'LPL 頂級全華班',
+      competitorOvr: rng.range(bgRating - 3, bgRating + 2)
+    });
   }
 
   card('info', '轉會期報價', `經紀人為你帶來了本年度各俱樂部的報價清單。`);
 
-  const optList = offers.map(o => ({
-    t: `✍️ 簽約 ${o.teamName}`,
-    main: true,
-    s: `${o.desc} · 年薪 $${o.salary.toLocaleString()} 元`,
-    f: () => {
-      S.team = o.teamName;
-      S.teamId = o.teamId;
-      S.salary = o.salary;
-      S.money += Math.round(o.salary * 0.4);
-      const teamObj = getTeamById(o.teamId);
-      const teamBaseRating = teamObj ? teamObj.baseRating : 70;
-      S.benchCompetitorOvr = rng.range(teamBaseRating - 3, teamBaseRating + 2);
-      card('gold', '轉會簽約確立', `你正式加盟 <b class="hl">${o.teamName}</b>！`);
-      tlPush(`加盟 ${o.teamName}`);
+  const optList = offers.map(o => {
+    const myOvr = ovr();
+    const canBeStarter = myOvr >= o.competitorOvr;
+    const statusTxt = canBeStarter ? '🟢 預計先發' : `🔴 預計替補 (需追趕 ${o.competitorOvr - myOvr} OVR)`;
 
-      choose('年度結算', [
-        { t: '繼續下一年征程 ▸', main: true, f: () => startNextProYear() },
-        { t: '宣布功成名就，光榮引退 🏆', warn: true, f: () => triggerRetirement() }
-      ]);
-    }
-  }));
+    return {
+      t: `✍️ 簽約 ${o.teamName}`,
+      main: true,
+      s: `${o.desc} · 年薪 $${o.salary.toLocaleString()} 元<br><small style="color:var(--dim);">競爭對手 OVR: <b>${o.competitorOvr}</b> | ${statusTxt}</small>`,
+      f: () => {
+        S.team = o.teamName;
+        S.teamId = o.teamId;
+        S.salary = o.salary;
+        S.money += Math.round(o.salary * 0.4);
+        S.benchCompetitorOvr = o.competitorOvr;
+        S.coachTrust = 60; // reset coach trust when joining new team
+        S.rosterStatus = canBeStarter ? 'STARTER' : 'SUB';
+        card('gold', '轉會簽約確立', `你正式加盟 <b class="hl">${o.teamName}</b>！職位：${canBeStarter ? '<b class="hl">先發選手</b>' : '<b class="warn">替補選手</b>'}`);
+        tlPush(`加盟 ${o.teamName}`);
+
+        choose('年度結算', [
+          { t: '繼續下一年征程 ▸', main: true, f: () => startNextProYear() },
+          { t: '宣布功成名就，光榮引退 🏆', warn: true, f: () => triggerRetirement() }
+        ]);
+      }
+    };
+  });
 
   if (S.age >= 20) {
     optList.push({
