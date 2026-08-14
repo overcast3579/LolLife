@@ -206,6 +206,12 @@ function playerType() {
   return '潛力新秀';
 }
 
+function getAbBaseCost(val) {
+  if (val < 50) return 1;
+  const n = Math.floor((val - 50) / 10);
+  return Math.pow(2, n + 1);
+}
+
 function addAb(k, v) {
   if (!S || !(k in S.ab)) return 0;
   const o = S.ab[k];
@@ -213,7 +219,7 @@ function addAb(k, v) {
   let cur = o, bud = v + (S.carry[k] || 0);
   const pk = S.pot[k] || 75;
   while (bud > 0 && cur < 99) {
-    let cost = cur >= 60 ? 4 : cur >= 50 ? 2 : 1;
+    let cost = getAbBaseCost(cur);
     if (cur >= pk) cost *= 3;
     if (bud >= cost) { bud -= cost; cur++; } else break;
   }
@@ -225,7 +231,7 @@ function addAb(k, v) {
 function abCost(k) {
   if (!S) return 1;
   const cur = S.ab[k], pk = S.pot[k] || 75;
-  let c = cur >= 60 ? 4 : cur >= 50 ? 2 : 1;
+  let c = getAbBaseCost(cur);
   if (cur >= pk) c *= 3;
   return c;
 }
