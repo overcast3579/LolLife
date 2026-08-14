@@ -1438,9 +1438,12 @@ function runProSplit(splitKey, onSplitDone) {
           card('bad', '💺 下放替補席', `教練宣布調整先發名單！因你近期綜合能力 (${ovr()}) 低於替補競爭對手 (${S.benchCompetitorOvr})、極度疲勞或教練信任不足，已被下放至替補名單。`);
         }
       } else if (S.rosterStatus === 'SUB') {
-        if ((!S.injuryRoundsLeft || S.injuryRoundsLeft <= 0) && ovr() >= S.benchCompetitorOvr && S.fatigue < 50 && S.coachTrust > 50) {
+        const canRegainStarter = (!S.injuryRoundsLeft || S.injuryRoundsLeft <= 0) &&
+          S.fatigue < 50 &&
+          ((S.coachTrust > 65 && ovr() >= S.benchCompetitorOvr - 3) || (S.coachTrust > 45 && ovr() >= S.benchCompetitorOvr));
+        if (canRegainStarter) {
           S.rosterStatus = 'STARTER';
-          card('good', '🔥 奪回先發席位', `教練對你最近的調整狀態非常滿意！你重回先發名單！`);
+          card('good', '🔥 奪回先發席位', `教練對你最近的調整狀態與溝通非常滿意！你重返先發名單！`);
         }
       }
     }
@@ -1602,13 +1605,24 @@ function runProSplit(splitKey, onSplitDone) {
             },
             {
               t: '🏋️ 進行瘋狂自主加練',
-              s: '在訓練室狂打 Rank。操作與觀念微幅提升，但大幅消耗疲勞與手腕健康',
+              s: '在訓練室狂打 Rank。操作與觀念顯著提升，但大幅消耗疲勞與手腕健康',
               f: () => {
-                addAb('mechanics', 1);
-                addAb('macro', 1);
+                addAb('mechanics', 2);
+                addAb('macro', 2);
                 S.fatigue = Math.min(100, S.fatigue + 20);
                 S.wristHealth = Math.max(0, S.wristHealth - 8);
-                card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀更上了一層樓！');
+                card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀顯著提升，操作與觀念各 <b class="up">+2</b>！');
+                resolveSubRound();
+              }
+            },
+            {
+              t: '🛌 徹底放鬆休息 (降低疲勞與養護手腕)',
+              s: '老實躺平休息以調養身體，大幅降低疲勞並恢復手腕健康度',
+              f: () => {
+                S.fatigue = Math.max(0, S.fatigue - 30);
+                S.wristHealth = Math.min(100, S.wristHealth + 15);
+                S.coachTrust = Math.max(0, S.coachTrust - 5);
+                card('good', '老實養精蓄銳', '你選擇休養調護身體。疲勞值 <b class="up">-30%</b>，手腕健康度 <b class="up">+15%</b>，雖然教練對你沒在加練微有微詞。');
                 resolveSubRound();
               }
             },
@@ -1701,13 +1715,25 @@ function runProSplit(splitKey, onSplitDone) {
           },
           {
             t: '🏋️ 進行瘋狂自主加練',
-            s: '在訓練室狂打 Rank。操作與觀念微幅提升，但大幅消耗疲勞與手腕健康',
+            s: '在訓練室狂打 Rank。操作與觀念顯著提升，但大幅消耗疲勞與手腕健康',
             f: () => {
-              addAb('mechanics', 1);
-              addAb('macro', 1);
+              addAb('mechanics', 2);
+              addAb('macro', 2);
               S.fatigue = Math.min(100, S.fatigue + 20);
               S.wristHealth = Math.max(0, S.wristHealth - 8);
-              card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀更上了一層樓！');
+              card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀顯著提升，操作與觀念各 <b class="up">+2</b>！');
+              const won = rng.next() < (S.benchCompetitorOvr / 105);
+              resolvePlayoffsSemi(won, false);
+            }
+          },
+          {
+            t: '🛌 徹底放鬆休息 (降低疲勞與養護手腕)',
+            s: '老實躺平休息以調養身體，大幅降低疲勞並恢復手腕健康度',
+            f: () => {
+              S.fatigue = Math.max(0, S.fatigue - 30);
+              S.wristHealth = Math.min(100, S.wristHealth + 15);
+              S.coachTrust = Math.max(0, S.coachTrust - 5);
+              card('good', '老實養精蓄銳', '你選擇休養調度身體。疲勞值 <b class="up">-30%</b>，手腕健康度 <b class="up">+15%</b>，雖然教練對你沒在加練微有微詞。');
               const won = rng.next() < (S.benchCompetitorOvr / 105);
               resolvePlayoffsSemi(won, false);
             }
@@ -1776,13 +1802,25 @@ function runProSplit(splitKey, onSplitDone) {
           },
           {
             t: '🏋️ 進行瘋狂自主加練',
-            s: '在訓練室狂打 Rank。操作與觀念微幅提升，但大幅消耗疲勞與手腕健康',
+            s: '在訓練室狂打 Rank。操作與觀念顯著提升，但大幅消耗疲勞與手腕健康',
             f: () => {
-              addAb('mechanics', 1);
-              addAb('macro', 1);
+              addAb('mechanics', 2);
+              addAb('macro', 2);
               S.fatigue = Math.min(100, S.fatigue + 20);
               S.wristHealth = Math.max(0, S.wristHealth - 8);
-              card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀更上了一層樓！');
+              card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀顯著提升，操作與觀念各 <b class="up">+2</b>！');
+              const won = rng.next() < (S.benchCompetitorOvr / 110);
+              resolvePlayoffsFinal(won, false);
+            }
+          },
+          {
+            t: '🛌 徹底放鬆休息 (降低疲勞與養護手腕)',
+            s: '老實躺平休息以調養身體，大幅降低疲勞並恢復手腕健康度',
+            f: () => {
+              S.fatigue = Math.max(0, S.fatigue - 30);
+              S.wristHealth = Math.min(100, S.wristHealth + 15);
+              S.coachTrust = Math.max(0, S.coachTrust - 5);
+              card('good', '老實養精蓄銳', '你選擇休養調度身體。疲勞值 <b class="up">-30%</b>，手腕健康度 <b class="up">+15%</b>，雖然教練對你沒在加練微有微詞。');
               const won = rng.next() < (S.benchCompetitorOvr / 110);
               resolvePlayoffsFinal(won, false);
             }
@@ -1852,13 +1890,25 @@ function runProSplit(splitKey, onSplitDone) {
           },
           {
             t: '🏋️ 進行瘋狂自主加練',
-            s: '在訓練室狂打 Rank。操作與觀念微幅提升，但大幅消耗疲勞與手腕健康',
+            s: '在訓練室狂打 Rank。操作與觀念顯著提升，但大幅消耗疲勞與手腕健康',
             f: () => {
-              addAb('mechanics', 1);
-              addAb('macro', 1);
+              addAb('mechanics', 2);
+              addAb('macro', 2);
               S.fatigue = Math.min(100, S.fatigue + 20);
               S.wristHealth = Math.max(0, S.wristHealth - 8);
-              card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀更上了一層樓！');
+              card('good', '進行自主加練', '你瘋狂加練了 10 場 Solo！雖然感到筋疲力盡，但你的基本功與大局觀顯著提升，操作與觀念各 <b class="up">+2</b>！');
+              const won = rng.next() < (S.benchCompetitorOvr / 115);
+              resolveInternationalMatch(won, tourneyInfo, false);
+            }
+          },
+          {
+            t: '🛌 徹底放鬆休息 (降低疲勞與養護手腕)',
+            s: '老實躺平休息以調養身體，大幅降低疲勞並恢復手腕健康度',
+            f: () => {
+              S.fatigue = Math.max(0, S.fatigue - 30);
+              S.wristHealth = Math.min(100, S.wristHealth + 15);
+              S.coachTrust = Math.max(0, S.coachTrust - 5);
+              card('gold', '老實養精蓄銳', '你選擇休養調度身體。疲勞值 <b class="up">-30%</b>，手腕健康度 <b class="up">+15%</b>，雖然教練對你沒在加練微有微詞。');
               const won = rng.next() < (S.benchCompetitorOvr / 115);
               resolveInternationalMatch(won, tourneyInfo, false);
             }
@@ -1886,12 +1936,8 @@ function runProSplit(splitKey, onSplitDone) {
     const opp = getTeamById(matchInfo.oppTeamId);
     const won = rng.next() < (S.benchCompetitorOvr / 100);
     
-    S.stats.matchesPlayed += 3;
-    S.stats.matchesWon += won ? 2 : 1;
-    S.currentSplitStats.matchesPlayed += 3;
-    S.currentSplitStats.matchesWon += won ? 2 : 1;
-    recordMatchStats(won, false);
-    
+    // Note: Since the player is a SUB, we do NOT increment personal matchesPlayed, matchesWon, and we do NOT call recordMatchStats().
+    // We only update the team standings and schedule.
     if (won) {
       season.standings[S.teamId].wins++;
       season.standings[opp.id].losses++;
@@ -1923,23 +1969,35 @@ function runProSplit(splitKey, onSplitDone) {
         season.standings[S.teamId].wins++;
         season.standings[curOpp.id].losses++;
         curMatch.won = true;
-        S.stats.matchesPlayed += 3;
-        S.stats.matchesWon += 2;
-        S.currentSplitStats.matchesPlayed += 3;
-        S.currentSplitStats.matchesWon += 2;
+        if (S.rosterStatus === 'STARTER') {
+          S.stats.matchesPlayed += 3;
+          S.stats.matchesWon += 2;
+          S.currentSplitStats.matchesPlayed += 3;
+          S.currentSplitStats.matchesWon += 2;
+        }
       } else {
         season.standings[S.teamId].losses++;
         season.standings[curOpp.id].wins++;
         curMatch.won = false;
-        S.stats.matchesPlayed += 3;
-        S.stats.matchesWon += 1;
-        S.currentSplitStats.matchesPlayed += 3;
-        S.currentSplitStats.matchesWon += 1;
+        if (S.rosterStatus === 'STARTER') {
+          S.stats.matchesPlayed += 3;
+          S.stats.matchesWon += 1;
+          S.currentSplitStats.matchesPlayed += 3;
+          S.currentSplitStats.matchesWon += 1;
+        }
       }
       curMatch.isFinished = true;
       
       if (S.rosterStatus === 'STARTER') {
-        recordMatchStats(won, false);
+        if (won) {
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(false, false);
+        } else {
+          recordMatchStats(true, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+        }
       }
       
       simulateOtherTeams(curOpp.id);
@@ -2002,13 +2060,22 @@ function runProSplit(splitKey, onSplitDone) {
       S.stats.matchesWon += won ? 1 : 1;
       S.currentSplitStats.matchesPlayed += 2;
       S.currentSplitStats.matchesWon += won ? 1 : 1;
-      recordMatchStats(won, false);
+      recordMatchStats(true, false);
+      recordMatchStats(false, false);
     } else {
       S.stats.matchesPlayed += 3;
       S.stats.matchesWon += won ? 2 : 1;
       S.currentSplitStats.matchesPlayed += 3;
       S.currentSplitStats.matchesWon += won ? 2 : 1;
-      recordMatchStats(won, false);
+      if (won) {
+        recordMatchStats(true, false);
+        recordMatchStats(true, false);
+        recordMatchStats(false, false);
+      } else {
+        recordMatchStats(true, false);
+        recordMatchStats(false, false);
+        recordMatchStats(false, false);
+      }
     }
     
     if (won) {
@@ -2145,13 +2212,28 @@ function runProSplit(splitKey, onSplitDone) {
         S.stats.matchesWon += won ? 2 : 2;
         S.currentSplitStats.matchesPlayed += 4;
         S.currentSplitStats.matchesWon += won ? 2 : 2;
-        recordMatchStats(won, false);
+        recordMatchStats(true, false);
+        recordMatchStats(true, false);
+        recordMatchStats(false, false);
+        recordMatchStats(false, false);
       } else {
         S.stats.matchesPlayed += 5;
         S.stats.matchesWon += won ? 3 : 2;
         S.currentSplitStats.matchesPlayed += 5;
         S.currentSplitStats.matchesWon += won ? 3 : 2;
-        recordMatchStats(won, false);
+        if (won) {
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+        } else {
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+        }
       }
     }
     
@@ -2176,13 +2258,28 @@ function runProSplit(splitKey, onSplitDone) {
         S.stats.matchesWon += won ? 2 : 2;
         S.currentSplitStats.matchesPlayed += 4;
         S.currentSplitStats.matchesWon += won ? 2 : 2;
-        recordMatchStats(won, false);
+        recordMatchStats(true, false);
+        recordMatchStats(true, false);
+        recordMatchStats(false, false);
+        recordMatchStats(false, false);
       } else {
         S.stats.matchesPlayed += 5;
         S.stats.matchesWon += won ? 3 : 2;
         S.currentSplitStats.matchesPlayed += 5;
         S.currentSplitStats.matchesWon += won ? 3 : 2;
-        recordMatchStats(won, false);
+        if (won) {
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+        } else {
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+        }
       }
     }
     
@@ -2215,13 +2312,28 @@ function runProSplit(splitKey, onSplitDone) {
         S.stats.matchesWon += won ? 2 : 2;
         S.currentSplitStats.matchesPlayed += 4;
         S.currentSplitStats.matchesWon += won ? 2 : 2;
-        recordMatchStats(won, false);
+        recordMatchStats(true, false);
+        recordMatchStats(true, false);
+        recordMatchStats(false, false);
+        recordMatchStats(false, false);
       } else {
         S.stats.matchesPlayed += 5;
         S.stats.matchesWon += won ? 3 : 2;
         S.currentSplitStats.matchesPlayed += 5;
         S.currentSplitStats.matchesWon += won ? 3 : 2;
-        recordMatchStats(won, false);
+        if (won) {
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+        } else {
+          recordMatchStats(true, false);
+          recordMatchStats(true, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+          recordMatchStats(false, false);
+        }
       }
     }
     
@@ -2275,9 +2387,23 @@ function runProSplit(splitKey, onSplitDone) {
     const winRate = st.matchesPlayed > 0 ? ((st.matchesWon / st.matchesPlayed) * 100).toFixed(0) : 0;
     const kda = st.deaths > 0 ? ((st.kills + st.assists) / st.deaths).toFixed(2) : (st.kills + st.assists).toFixed(2);
     
+    const avgK = st.matchesPlayed > 0 ? (st.kills / st.matchesPlayed).toFixed(1) : '0.0';
+    const avgD = st.matchesPlayed > 0 ? (st.deaths / st.matchesPlayed).toFixed(1) : '0.0';
+    const avgA = st.matchesPlayed > 0 ? (st.assists / st.matchesPlayed).toFixed(1) : '0.0';
+
+    if (st.matchesPlayed === 0) {
+      card('gold', `📊 ${splitName} 個人數據結算`, `
+        <b>選手狀態</b>：本賽季作為替補未上場出賽<br>
+        <b>系列賽戰績</b>：無出賽數據
+      `);
+      return;
+    }
+
     card('gold', `📊 ${splitName} 個人數據結算`, `
-      <b>系列賽戰績</b>：${st.matchesWon} 勝 / ${st.matchesPlayed - st.matchesWon} 敗 (勝率 ${winRate}%)<br>
-      <b>個人 KDA</b>：${st.kills} 殺 / ${st.deaths} 死 / ${st.assists} 助攻 (KDA: <b class="hl">${kda}</b>)<br>
+      <b>個人出賽局數</b>：${st.matchesPlayed} 局<br>
+      <b>個人單局戰績</b>：${st.matchesWon} 勝 / ${st.matchesPlayed - st.matchesWon} 敗 (勝率 ${winRate}%)<br>
+      <b>個人總 KDA數據</b>：${st.kills} 殺 / ${st.deaths} 死 / ${st.assists} 助攻 (KDA: <b class="hl">${kda}</b>)<br>
+      <b>個人每場平均數據</b>：場均 <b class="hl">${avgK}</b> 殺 / <b class="hl">${avgD}</b> 死 / <b class="hl">${avgA}</b> 助攻<br>
       <b>單場 MVP (POG) 次數</b>：<b class="hl">${st.pogCount} 次</b>
     `);
   }
@@ -2290,6 +2416,26 @@ function processSplitSettlementEvaluation(splitKey, splitInfo, wonChamp, onDone)
   const st = S.currentSplitStats;
   if (!st) {
     onDone();
+    return;
+  }
+  
+  if (st.matchesPlayed === 0) {
+    card('good', '✨ 替補備戰', '本賽季你作為替補並未上場參賽，未產生賽場個人數據，基礎屬性保持穩定。');
+    const pointsAwarded = 3; // subs get a baseline of 3 points since they didn't play
+    const awardReasons = ['• 賽季替補備戰自主加練獎勵：+3 點'];
+    
+    card('gold', `🎯 賽季結算天賦點數獎勵 (共 +${pointsAwarded} 點)`, `
+      恭喜！因你本賽季在替補席配合團隊加練，你獲得了 <b>${pointsAwarded}</b> 點自由分配屬性點數：<br><br>
+      ${awardReasons.join('<br>')}
+    `);
+    
+    choose('開始分配點數', [
+      {
+        t: '進入屬性分配面板 ▸',
+        main: true,
+        f: () => allocateSplitPoints(pointsAwarded, onDone)
+      }
+    ]);
     return;
   }
   
@@ -2311,7 +2457,7 @@ function processSplitSettlementEvaluation(splitKey, splitInfo, wonChamp, onDone)
   if (winRate < 0.42) {
     const penalty = rng.range(3, 5);
     S.ab.mental = Math.max(20, S.ab.mental - penalty);
-    penaltyTexts.push(`⚠️ <b>心態炸裂</b>：隊伍戰績低迷 (勝率 ${(winRate*100).toFixed(0)}%)，連敗導致你心理防線崩潰，<b>心態扣減 ${penalty} 點</b>！`);
+    penaltyTexts.push(`⚠️ <b>心態炸裂</b>：個人出賽勝率低迷 (勝率 ${(winRate*100).toFixed(0)}%)，連敗導致你心理防線崩潰，<b>心態扣減 ${penalty} 點</b>！`);
   }
   
   // 3. Team cohesion/Macro penalty (Low assists or offmeta)
@@ -2528,12 +2674,22 @@ function phaseYearEndTransfer() {
   const yearSplits = (S.splitHistory || []).filter(h => h.year === S.year);
   if (yearSplits.length > 0) {
     let splitsHtml = yearSplits.map(st => {
+      if (st.matchesPlayed === 0) {
+        return `
+          <div style="margin-bottom:8px; padding:6px; background:rgba(255,255,255,0.05); border:1px solid var(--edge); border-radius:4px;">
+            <strong>${st.splitName}</strong>：本賽季作為替補未上場出賽
+          </div>
+        `;
+      }
       const winRate = st.matchesPlayed > 0 ? ((st.matchesWon / st.matchesPlayed) * 100).toFixed(0) : 0;
       const kda = st.deaths > 0 ? ((st.kills + st.assists) / st.deaths).toFixed(2) : (st.kills + st.assists).toFixed(2);
+      const avgK = (st.kills / st.matchesPlayed).toFixed(1);
+      const avgD = (st.deaths / st.matchesPlayed).toFixed(1);
+      const avgA = (st.assists / st.matchesPlayed).toFixed(1);
       return `
         <div style="margin-bottom:8px; padding:6px; background:rgba(255,255,255,0.05); border:1px solid var(--edge); border-radius:4px;">
-          <strong>${st.splitName}</strong>：${st.matchesWon} 勝 / ${st.matchesPlayed - st.matchesWon} 敗 (勝率 ${winRate}%)<br>
-          KDA: <b class="hl">${kda}</b> | POG MVP: <b class="hl">${st.pogCount} 次</b>
+          <strong>${st.splitName}</strong>：出賽 ${st.matchesPlayed} 局 (${st.matchesWon} 勝 / ${st.matchesPlayed - st.matchesWon} 敗，勝率 ${winRate}%)<br>
+          KDA: <b class="hl">${kda}</b> (場均: ${avgK} / ${avgD} / ${avgA}) | POG MVP: <b class="hl">${st.pogCount} 次</b>
         </div>
       `;
     }).join('');
@@ -2550,6 +2706,9 @@ function phaseYearEndTransfer() {
     
     const yrWinRate = yrPlayed > 0 ? ((yrWon / yrPlayed) * 100).toFixed(0) : 0;
     const yrKda = yrD > 0 ? ((yrK + yrA) / yrD).toFixed(2) : (yrK + yrA).toFixed(2);
+    const yrAvgK = yrPlayed > 0 ? (yrK / yrPlayed).toFixed(1) : '0.0';
+    const yrAvgD = yrPlayed > 0 ? (yrD / yrPlayed).toFixed(1) : '0.0';
+    const yrAvgA = yrPlayed > 0 ? (yrA / yrPlayed).toFixed(1) : '0.0';
     
     card('gold', `🏆 ${S.year} 年度生涯總結算報告`, `
       <div style="font-size:12.5px; line-height: 1.5;">
@@ -2557,9 +2716,9 @@ function phaseYearEndTransfer() {
         ${splitsHtml}
         <hr style="border:0; border-top:1px solid var(--edge); margin:8px 0;">
         <span style="color:var(--gold); font-weight:bold;">📈 ${S.year} 全年度總計：</span><br>
-        • 總戰績：<b class="hl">${yrWon} 勝 / ${yrPlayed - yrWon} 敗</b> (勝率 ${yrWinRate}%)<br>
-        • 總參賽局數：${yrPlayed} 局<br>
-        • 總 KDA：${yrK} / ${yrD} / ${yrA} (平均 KDA: <b class="hl">${yrKda}</b>)<br>
+        • 總出賽局數：<b class="hl">${yrPlayed} 局</b> (戰績 ${yrWon} 勝 / ${yrPlayed - yrWon} 敗，勝率 ${yrWinRate}%)<br>
+        • 總 KDA：${yrK} / ${yrD} / ${yrA} (KDA: <b class="hl">${yrKda}</b>)<br>
+        • 生涯場均數據：場均 <b class="hl">${yrAvgK}</b> 殺 / <b class="hl">${yrAvgD}</b> 死 / <b class="hl">${yrAvgA}</b> 助攻<br>
         • 全年 MVP (POG) 次數：<b class="hl">${yrPog} 次</b>
       </div>
     `);
