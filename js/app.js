@@ -1030,9 +1030,67 @@ function run7PhaseMatch(oppTeam, chosenChampId, onMatchDone) {
 
   card('info', `⚔️ 系列賽開打 · 鎖定 ${champ.name}`, `你鎖定了 <b class="hl">${champ.name}</b> (${mastery.name})${isOffMeta ? ' 祭出非主流黑科技套路！' : ''}，全場焦點凝聚於召喚峽谷！`);
 
+  const playerOvr = ovr() + getTacticModifier();
+  const oppOvr = oppTeam.baseRating || 72;
+  let winRate = (playerOvr / (playerOvr + oppOvr)) * 100;
+  // 加入一些隨機性波動開局
+  winRate = Math.max(25, Math.min(75, Math.round(winRate + rng.range(-6, 6))));
+  const winRateHistory = [winRate];
+
   let currentPhase = 1;
   let goldDiff = 0;
   let kills = 0, deaths = 0, assists = 0;
+
+  function generateWinRateSVG(history) {
+    const points = [];
+    const width = 360;
+    const height = 180;
+    const paddingX = 40;
+    const paddingY = 20;
+    
+    const stepX = (width - paddingX * 2) / (history.length - 1);
+    const stepY = (height - paddingY * 2);
+
+    for (let i = 0; i < history.length; i++) {
+      const x = paddingX + i * stepX;
+      const y = paddingY + stepY - (history[i] / 100) * stepY;
+      points.push({ x, y, val: history[i] });
+    }
+    
+    const pathD = `M ${points.map(p => `${p.x} ${p.y}`).join(' L ')}`;
+    
+    const pointsHTML = points.map((p, i) => `
+      <circle cx="${p.x}" cy="${p.y}" r="4" fill="${i === points.length - 1 ? '#00f2fe' : '#ffffff'}" stroke="#0f142c" stroke-width="1.5" />
+      <text x="${p.x}" y="${p.y - 7}" fill="#ffffff" font-size="8.5" font-weight="bold" text-anchor="middle" style="text-shadow: 0 1px 2px rgba(0,0,0,0.8);">${p.val}%</text>
+      <text x="${p.x}" y="${height - 2}" fill="rgba(255,255,255,0.4)" font-size="8" text-anchor="middle">P${i}</text>
+    `).join('');
+
+    return `
+      <div style="margin-top: 15px; margin-bottom: 5px;">
+        <div style="font-size:12px; font-weight:bold; color:var(--text); margin-bottom:6px; text-align:center;">📊 本局雙方勝率波動曲線圖</div>
+        <svg viewBox="0 0 ${width} ${height}" style="width:100%; height:160px; background:#0f142c; border-radius:var(--r); border:1px solid rgba(255,255,255,0.06); padding-top:6px; overflow:visible;">
+          <!-- Grid horizontal lines -->
+          <line x1="${paddingX}" y1="${paddingY}" x2="${width - paddingX}" y2="${paddingY}" stroke="rgba(255,255,255,0.04)" stroke-dasharray="3" />
+          <line x1="${paddingX}" y1="${paddingY + stepY * 0.25}" x2="${width - paddingX}" y2="${paddingY + stepY * 0.25}" stroke="rgba(255,255,255,0.04)" stroke-dasharray="3" />
+          <line x1="${paddingX}" y1="${paddingY + stepY * 0.5}" x2="${width - paddingX}" y2="${paddingY + stepY * 0.5}" stroke="rgba(0, 242, 254, 0.2)" stroke-width="1.5" stroke-dasharray="5 3" /> <!-- 50% baseline -->
+          <line x1="${paddingX}" y1="${paddingY + stepY * 0.75}" x2="${width - paddingX}" y2="${paddingY + stepY * 0.75}" stroke="rgba(255,255,255,0.04)" stroke-dasharray="3" />
+          <line x1="${paddingX}" y1="${paddingY + stepY}" x2="${width - paddingX}" y2="${paddingY + stepY}" stroke="rgba(255,255,255,0.04)" stroke-dasharray="3" />
+          
+          <!-- Y-Axis labels -->
+          <text x="10" y="${paddingY + 3}" fill="rgba(255,255,255,0.4)" font-size="8.5">100%</text>
+          <text x="15" y="${paddingY + stepY * 0.5 + 3}" fill="rgba(255,255,255,0.5)" font-size="8.5">50%</text>
+          <text x="20" y="${paddingY + stepY + 3}" fill="rgba(255,255,255,0.4)" font-size="8.5">0%</text>
+          
+          <!-- Win rate Trend Line -->
+          <path d="${pathD}" fill="none" stroke="#00f2fe" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+          
+          <!-- Interactive markers and labels -->
+          ${pointsHTML}
+        </svg>
+        <div style="font-size:9.5px; color:var(--text-dim); text-align:center; margin-top:4px;">P0:開局 | P1-P7:決策階段輪次</div>
+      </div>
+    `;
+  }
 
   function runNextPhase() {
     if (currentPhase > 7 || Math.abs(goldDiff) >= 8000) {
@@ -1050,9 +1108,12 @@ function run7PhaseMatch(oppTeam, chosenChampId, onMatchDone) {
       S.currentSplitStats.matchesPlayed += 1;
       if (won) S.currentSplitStats.matchesWon += 1;
 
+      const chartHTML = generateWinRateSVG(winRateHistory);
+
       card(won ? 'gold' : 'bad', won ? '🏆 VICTORY 勝利！' : '💀 DEFEAT 戰敗', `
         面對 <b class="hl">${oppTeam.name}</b>，全隊以 <b class="${won ? 'up' : 'dn'}">${won ? '2:0 拿下系列賽' : '1:2 遺憾告負'}</b>！<br>
         個人本局數據：<b class="hl">${kills} 殺 / ${deaths} 死 / ${assists} 助攻</b>${isPog ? ' · 榮獲單場 MVP (POG)！🔥' : ''}
+        ${chartHTML}
       `);
 
       onMatchDone(won);
@@ -1062,77 +1123,152 @@ function run7PhaseMatch(oppTeam, chosenChampId, onMatchDone) {
     const phases = [
       null,
       {
-        name: '階段 1 (0:00~1:30) 一級團與野區布防',
+        name: '階段 1 一級團與野區布防',
         choices: [
-          { t: '五人集結入侵對方野區 (一級團)', s: '高風險高報酬', risk: 0.5, successTxt: '【一級團大勝】你的精準進場逼出敵方雙閃並斬獲一血！', failTxt: '遭敵方防守埋伏，交出閃現仍送出一血。' },
-          { t: '五點防守，做好常規眼位', s: '穩健開局', risk: 0.8, successTxt: '防守視野滴水不漏，野區平穩開局。', failTxt: '視野被敵方排掉，打野路線暴露。' },
+          { t: '五人集結入侵敵方野區 (一級團強碰)', s: '拼操作與進攻性', risk: 0.45, attr: 'mechanics', successTxt: '【一級團大勝】你的精準技能施放成功逼出敵方雙閃，並由你斬獲一血！', failTxt: '遭對手完美防守眼位提前探知並反包抄，你送出了一血。' },
+          { t: '常規五點防守，做好防守眼位', s: '極其穩健安全開局', risk: 0.8, attr: 'macro', successTxt: '常規防守眼位完美探知敵方野區動向，野區平穩開局。', failTxt: '做眼過深被敵方抓到位置，交出閃現驚險逃生，野區節奏略微受限。' },
+          { t: '單人潛入敵方 Buff 處插防守眼', s: '用視野刺探敵方打野動線', risk: 0.65, attr: 'macro', successTxt: '成功探知敵方打野鏡像路線，為我方打野前期控資源爭取主動。', failTxt: '被敵方人堆堵住，被迫交出閃現，前期防線受阻。' },
+          { t: '紅開/藍開出其不意鏡像交換野區', s: '利用英雄特性進行策略換野', risk: 0.75, attr: 'championPool', successTxt: '完美鏡像換野，避開對手強勢期，前期營運取得小幅領先。', failTxt: '換野路線被敵方插眼探知，敵方三包一入侵將你逼退。' },
+          { t: '五人抱團蹲在河道草叢嘗試海釣抓人', s: '出其不意的反蹲埋伏', risk: 0.55, attr: 'communication', successTxt: '成功蹲到敵方探視野的輔助，將其控住秒殺，收下首殺！', failTxt: '久蹲無果，反而導致自家野區被對手偷掉一組野怪。' }
         ]
       },
       {
-        name: '階段 2 (1:30~5:00) 首輪對線與打野動向',
+        name: '階段 2 首輪對線與打野動向',
         choices: [
-          { t: '搶二/搶三主動發難換血單殺', s: '極限操作對決', risk: 0.55, successTxt: '【極限單殺！】你抓準走位破綻單殺對手，引爆全場！', failTxt: '換血過於激進，遭敵方打野反蹲擊殺。' },
-          { t: '控線發育，呼叫打野越塔 Gank', s: '節奏營運', risk: 0.75, successTxt: '兵線完美進塔，打野配合越塔拿下人頭！', failTxt: '兵線被控住，補刀略微落後。' },
+          { t: '搶二/搶三主動發難，線上壓制嘗試單殺', s: '考驗線上純操作與換血技巧', risk: 0.5, attr: 'laning', successTxt: '【極限單殺！】你抓準對手補兵空檔打出完美連招將其單殺，引爆全場！', failTxt: '換血過於激進，結果被敵方反蹲的打野配合線上將你擊殺。' },
+          { t: '控線防守，呼叫打野越塔 Gank', s: '打野聯動越塔擊殺', risk: 0.7, attr: 'communication', successTxt: '兵線完美控在塔前，配合打野完美抗塔將敵方越塔擊殺！', failTxt: '抗塔順序出錯，越塔失敗反而被敵方換掉人頭，兵線崩潰。' },
+          { t: '放線抗壓，專注於補兵防守', s: '穩健發育，規避敵方 Gank', risk: 0.85, attr: 'discipline', successTxt: '穩健塔下控線補刀，成功規避敵方打野連續兩次草叢蹲伏。', failTxt: '兵線被控在敵方塔前，被敵方打野繞後 Gank 逼退回城，補刀落後。' },
+          { t: '放棄部分兵線，積極遊走支援野區與中路', s: '輻射全隊前期碰撞力', risk: 0.6, attr: 'macro', successTxt: '及時趕到河道戰場扭轉乾坤，收下敵方人頭並控下河蟹。', failTxt: '遊走未取得果實，返回線上時發現被對手拉開了 15 個補刀差。' },
+          { t: '瘋狂推線磨塔，試圖速拿防禦塔塔皮', s: '速推流給予對手塔前壓迫', risk: 0.65, attr: 'laning', successTxt: '對手被壓在塔下疲於清兵，你成功磨下兩層鍍層，經濟大賺！', failTxt: '推線過深且缺乏視野，被敵方中野聯動包夾擊殺在塔前。' }
         ]
       },
       {
-        name: '階段 3 (5:00~10:00) 首次回城與首輪中立物件',
+        name: '階段 3 首次回城與首輪中立物件',
         choices: [
-          { t: '集結隊友爭奪虛空巢蟲 / 首條小龍', s: '正面團戰碰撞', risk: 0.6, successTxt: '團戰大獲全勝，順利控下首條中立資源與領先！', failTxt: '陣型被割裂，丟失小龍。' },
-          { t: '果斷交換資源 (換塔皮 / 換線推塔)', s: '避戰轉線', risk: 0.8, successTxt: '避開正面鋒芒，吃下三層鍍層經濟補償！', failTxt: '地圖節奏被對手牽著走。' },
+          { t: '集結隊友爭奪虛空巢蟲 (爭奪小兵 Buff)', s: '搶奪前中期推塔資源', risk: 0.65, attr: 'macro', successTxt: '控下 5 隻巢蟲！前期推塔速度大幅提升，為後續拆塔埋下伏筆。', failTxt: '爭奪時團戰失利被擊退，巢蟲全部被敵方笑納。' },
+          { t: '全員下路集結，硬碰硬爭奪首條小龍', s: '前期龍魂累積與正面碰撞', risk: 0.6, attr: 'teamfight', successTxt: '團戰拉扯完美，控下首條小龍，並由你斬獲雙殺！', failTxt: '陣型散亂被敵方逐個擊破，丟失小龍，還送出了多個人頭。' },
+          { t: '避開正面交鋒，進行資源交換', s: '互換資源，補足自身發育', risk: 0.8, attr: 'laning', successTxt: '果斷放掉小龍，你在上路單帶連吃三層塔皮，經濟基本持平。', failTxt: '對手拿龍後迅速包夾，我方在防守塔下依然被強開越塔。' },
+          { t: '回城補滿裝備後，發起野區入侵強抓對方打野', s: '利用裝備領先入侵野區', risk: 0.55, attr: 'mechanics', successTxt: '在野區野怪處抓到敵方打野，你單槍匹馬將其斬殺並奪其野怪！', failTxt: '入侵野區被敵方視野洞察，反被敵方三包一擊殺，丟失發育節奏。' },
+          { t: '提前在河道草叢插眼落位，進行反蹲埋伏', s: '視野反蹲，伏擊敵方隊伍', risk: 0.7, attr: 'macro', successTxt: '成功埋伏到前來做視野的敵方輔助，秒殺後形成多打少，順勢拿下小龍！', failTxt: '埋伏位置被敵方真眼看到，反被對手從後方繞後包抄，團戰大潰敗。' }
         ]
       },
       {
-        name: '階段 4 (10:00~15:00) 塔皮鍍層與首塔擊破',
+        name: '階段 4 塔皮鍍層與首塔擊破',
         choices: [
-          { t: '四人集結強開下路越塔首塔', s: '四包二戰術', risk: 0.65, successTxt: '四包二完美配合，擊破一塔建立前期優勢！', failTxt: '越塔抗塔失誤，被換掉兩人。' },
-          { t: '穩健發育，等待第一件核心裝備', s: '發育拖後期', risk: 0.8, successTxt: '核心裝備順利出爐，迎來第一波強勢期。', failTxt: '防禦塔血量被消耗嚴重。' },
+          { t: '四人集結強包下路，強行越塔拿下一塔', s: '速拆一塔，帶起全場節奏', risk: 0.6, attr: 'teamfight', successTxt: '四包二越塔完美配合！擊殺敵方雙人組並順利擊破首塔！', failTxt: '越塔時抗塔失誤，遭到敵方雙人組塔下反殺兩人，一塔未能拿下。' },
+          { t: '呼叫打野釋放預示者，撞擊中路一塔', s: '利用預示者直接推平中一塔', risk: 0.75, attr: 'macro', successTxt: '成功釋放預示者一舉撞碎中路一塔，視野封鎖線大幅推前！', failTxt: '預示者召喚出來後被對手集火秒殺，未能撞出防禦塔，白白浪費資源。' },
+          { t: '穩健待在線上發育，等待第一件核心大裝', s: '穩健發育，不給對手機會', risk: 0.85, attr: 'discipline', successTxt: '核心首件大裝順利合成，線上補刀領先，迎來強勢戰力點。', failTxt: '防禦塔被對方單帶點點掉半血，發育空間被敵方視野大幅壓縮。' },
+          { t: '主動向隊友提議換線，換到邊線掠奪一塔', s: '轉線戰術避開主力交鋒', risk: 0.7, attr: 'laning', successTxt: '換線節奏流暢，趁敵方防守不及，單人速拆上路防禦塔！', failTxt: '換線時被敵方反蹲，邊線防禦塔沒推掉，反而送出了一塔。' },
+          { t: '呼叫隊友反蹲，防範敵方的越塔攻勢', s: '防禦塔前防守反擊戰', risk: 0.8, attr: 'communication', successTxt: '完美預判敵方攻勢！隊友及時反蹲打出 1 換 3 漂亮防守反擊！', failTxt: '反蹲視野沒做好，隊友趕到時塔已經被拔，己方被迫在尷尬位置接團。' }
         ]
       },
       {
-        name: '階段 5 (15:00~22:00) 中期營運與龍魂爭奪',
+        name: '階段 5 中期營運與龍魂爭奪',
         choices: [
-          { t: '執行 1-3-1 / 4-1 邊線單帶牽制', s: '單帶施壓', risk: 0.6, successTxt: '邊線通關二塔，拉扯得對手首尾不能相顧！', failTxt: '邊線帶太深被三人包抄抓單。' },
-          { t: '五人抱團野區排眼埋伏抓單', s: '陣地戰抓單', risk: 0.65, successTxt: '真眼埋伏秒殺敵方核心，順勢推上高地！', failTxt: '臉探草叢被反開團滅。' },
+          { t: '執行 1-3-1 / 4-1 邊線分推牽制', s: '單帶拉扯給予對手邊線壓力', risk: 0.6, attr: 'macro', successTxt: '你的單帶通關敵方二塔，拉扯得對手首尾難顧，被迫分兵防守！', failTxt: '單帶走位過深，在沒有隊友視野掩護下被對方三人包抄抓單擊殺。' },
+          { t: '聽牌龍爭奪：五人集集正面開團戰', s: '龍魂大決戰正面碰撞', risk: 0.55, attr: 'teamfight', successTxt: '團戰中你上演完美繞後輸出拉滿！隊伍拿下聽牌龍並團滅對手！', failTxt: '正面團戰被敵方前排頂住，敵方雙C無壓力輸出，團戰大潰敗丟失龍魂。' },
+          { t: '瘋狂排空野區視野，執行草叢埋伏', s: '視野盲區蹲伏抓單', risk: 0.65, attr: 'communication', successTxt: '真眼草叢埋伏成功！瞬間融化敵方探路核心，順勢破掉對方二塔！', failTxt: '草叢埋伏反被敵方遠程技能探照發現，臉探草叢被反手開團。' },
+          { t: '邊線抱團越塔，強殺敵方帶線選手', s: '多包一強殺撕裂敵方單帶點', risk: 0.7, attr: 'mechanics', successTxt: '越塔配合行雲流水，強殺對方單帶大核並拆掉二塔，打破單帶局勢！', failTxt: '越塔技能配合失誤被對方單帶大核塔下秀走位反殺一人，越塔失敗。' },
+          { t: '放棄龍魂，交換邊線兵線發育空間', s: '戰略放棄換取核心C位發育', risk: 0.8, attr: 'mental', successTxt: '果斷讓掉小龍，你趁機在邊路發育補滿三件套，為大後期團戰做好準備。', failTxt: '龍魂給了對手極大增益，隊伍防守壓力陡增，地圖資源被全面蠶食。' }
         ]
       },
       {
-        name: '階段 6 (22:00~30:00) 巴龍逼團與高地攻防',
+        name: '階段 6 巴龍逼團與高地攻防',
         choices: [
-          { t: '巴龍釣魚，引誘敵方正面接團打滅隊', s: '巴龍決戰', risk: 0.55, successTxt: '【巴龍滅隊！】完美開戰團滅對手並拿下巴龍，勝券在握！', failTxt: '巴龍被敵方打野神級盲視野搶走！' },
-          { t: '帶兵線磨高地防禦塔', s: '耐心蠶食', risk: 0.75, successTxt: '穩紮穩打磨破高地水晶，逼出超級士兵！', failTxt: '被對手頑強清線守住。' },
+          { t: '巴龍釣魚，引誘敵方正面接團打滅隊', s: '高難度巴龍逼團戰術', risk: 0.5, attr: 'teamfight', successTxt: '【巴龍滅隊！】完美停手開團將對手團滅，並順利收下巴龍，奠定勝局！', failTxt: '巴龍團戰拉扯失誤，巴龍被敵方打野神級重擊搶走，還被順勢反打團滅。' },
+          { t: '強行開打巴龍，拼打野重擊手速', s: '生死巴龍競速', risk: 0.45, attr: 'mechanics', successTxt: '重擊穩穩收下巴龍！獲得大巴龍 Buff，隊伍吹起進攻高地的號角！', failTxt: '重擊失誤巴龍被搶，隊友在高難度局勢下被迫接團，慘遭滅隊。' },
+          { t: '五人中路抱團，穩步蠶食高地防禦塔', s: '穩紮穩打兵線平推', risk: 0.75, attr: 'discipline', successTxt: '穩紮穩打磨破高地防禦塔與水晶，召喚出超級士兵，壓迫力十足！', failTxt: '推塔時過於心急被敵方繞後開團，防守陣型崩潰，未能攻克高地。' },
+          { t: '利用大巴龍 Buff 執行 4-1 分推蠶食邊路', s: '巴龍 Buff 單帶拉扯', risk: 0.8, attr: 'macro', successTxt: '巴龍分推效果顯著，邊路高地防禦塔被磨破，對手分身乏術。', failTxt: '單帶隊友被敵方強行包夾秒殺，大巴龍 Buff 提前中斷，錯失推塔良機。' },
+          { t: '利用野區視野優勢，在高地塔前發起強開', s: '強行衝塔開團撕裂防線', risk: 0.6, attr: 'mechanics', successTxt: '你神級開團控住敵方雙C，越塔打出 0 換 4 完美越塔團戰，直逼水晶！', failTxt: '越塔開團被敵方輔助金身/護盾技能完美化解，己方抗塔過深遭到團滅。' }
         ]
       },
       {
-        name: '階段 7 (30:00+) 終局遠古巨龍與主堡決戰',
+        name: '階段 7 終局遠古巨龍與主堡決戰',
         choices: [
-          { t: '遠古巨龍世紀死鬥，全員正面拼到底！', s: '終極生死戰', risk: 0.5, successTxt: '【拿下遠古龍一波結束！】斬殺 Buff 橫掃戰場，直點主堡！', failTxt: '遠古龍團惜敗，無力回天。' },
-          { t: '雙傳送偷拆主堡，孤注一擲基地競速！', s: '背水一戰', risk: 0.45, successTxt: '【神級偷拆！】正面拖住，單人點爆水晶完成史詩翻盤！', failTxt: '偷拆被回城守住，反遭一波。' },
+          { t: '遠古巨龍世紀死鬥，全員正面拼到底！', s: '遠古巨龍終極團戰生死決戰', risk: 0.45, attr: 'teamfight', successTxt: '【拿下遠古龍！】斬殺 Buff 降臨，你大殺四方砍下三殺，平推主堡奪冠！', failTxt: '遠古龍團惜敗被團滅，眼睜睜看著對手平推掉我方主堡。' },
+          { t: '雙傳送繞後偷拆主堡，水晶基地競速！', s: '背水一戰的極限基地拆家競速', risk: 0.4, attr: 'macro', successTxt: '【神級偷拆！】正面隊友用肉身阻擋敵方回城，你瘋狂點爆水晶完成史詩翻盤！', failTxt: '偷拆被敵方敏銳發覺並回城守住，你被擊殺後對手長驅直入一波推平。' },
+          { t: '五人抱團穩健推進，逼迫對方在高地迎戰', s: '常規高地主堡平推營運', risk: 0.7, attr: 'discipline', successTxt: '步步為營，依靠兵線磨掉兩座雙子塔，平穩點爆水晶奪得勝利！', failTxt: '高地推進時失誤被敵方打出完美防守反擊，對手一波反推結束比賽。' },
+          { t: '大膽在野區排眼抓單，造成多打少局勢', s: '野區終極埋伏抓單', risk: 0.55, attr: 'mechanics', successTxt: '在龍坑外抓死敵方落單輸出位！五打四形成絕對人數優勢，輕鬆推平基地！', failTxt: '抓單不成反被對手抱團反蹲，己方減員後防線全面崩潰，主堡失守。' },
+          { t: '全員死守基地，等待敵方失誤越塔', s: '極限高地基地防守戰', risk: 0.8, attr: 'mental', successTxt: '高地防守密不透風！敵方越塔心急出錯被我們塔下反殺三人，順勢一波反推！', failTxt: '敵方攻勢太猛，配合遠古龍 Buff 直接碾碎了我們的基地防線。' }
         ]
-      },
+      }
     ];
 
     const curP = phases[currentPhase];
-    choose(`決策｜${curP.name}`, curP.choices.map(c => ({
-      t: c.t,
-      s: c.s,
-      f: () => {
-        const pScore = ovr() / 100;
-        const succ = rng.next() < (c.risk * (0.6 + pScore * 0.5));
-        if (succ) {
-          goldDiff += 1500;
-          kills += 1;
-          card('good', curP.name, c.successTxt);
-        } else {
-          goldDiff -= 1500;
-          deaths += 1;
-          card('bad', curP.name, c.failTxt);
+    const prevWinRate = winRate;
+
+    const winRateHTML = `
+      <div style="margin-bottom: 12px; background:var(--panel2); padding:10px; border-radius:var(--r); border:1px solid rgba(255,255,255,0.05); font-family:inherit;">
+        <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:bold; margin-bottom:4px;">
+          <span style="color:var(--color-cyan);">我方即時勝率: ${winRate}%</span>
+          <span style="color:var(--color-red);">敵方即時勝率: ${100 - winRate}%</span>
+        </div>
+        <div style="display:flex; height:8px; border-radius:4px; overflow:hidden; background:#222;">
+          <div style="width:${winRate}%; background:var(--color-cyan); transition: width 0.4s ease;"></div>
+          <div style="width:${100 - winRate}%; background:var(--color-red); transition: width 0.4s ease;"></div>
+        </div>
+        <div style="font-size:10.5px; color:var(--text-dim); margin-top:4px; line-height:1.4;">
+          📍 峽谷即時經濟差：<b>${goldDiff >= 0 ? '+' : ''}${goldDiff}</b> 金幣 | 累計數據：${kills}K / ${deaths}D / ${assists}A
+        </div>
+      </div>
+    `;
+
+    const titleHTML = `
+      <div style="margin-bottom: 8px;">決策｜${curP.name}</div>
+      ${winRateHTML}
+    `;
+
+    choose(titleHTML, curP.choices.map(c => {
+      const attrVal = S.ab[c.attr] || 60;
+      const masteryBonus = Math.min(0.08, masteryPts / 300000);
+      const attrBonus = (attrVal - 60) * 0.003; 
+      const goldBonus = Math.max(-0.15, Math.min(0.15, goldDiff * 0.00003));
+      
+      let successProb = c.risk + attrBonus + masteryBonus + goldBonus;
+      successProb = Math.max(0.15, Math.min(0.85, successProb));
+      const successPct = Math.round(successProb * 100);
+
+      return {
+        t: c.t,
+        s: `🎯 預估成功率: <b>${successPct}%</b> | 屬性: ${ABL[c.attr]} (${attrVal}) | 熟練度: +${Math.round(masteryBonus*100)}%<br><small style="color:var(--text-dim);">${c.s}</small>`,
+        f: () => {
+          const succ = rng.next() < successProb;
+          
+          let prevWin = winRate;
+          let winRateChange = 0;
+          if (succ) {
+            winRateChange = rng.range(7, 13);
+            winRate = Math.min(99, winRate + winRateChange);
+            goldDiff += rng.range(800, 1600);
+            kills += 1;
+            
+            card('good', curP.name, `
+              <b>【決策成功】</b> ${c.successTxt}<br>
+              <div style="margin-top:5px; font-size:11px; color:var(--text-dim);">
+                📈 我方勝率變動：<b class="hl">${prevWin}% ➔ ${winRate}% (+${winRateChange}%)</b>
+              </div>
+            `);
+          } else {
+            winRateChange = rng.range(7, 13);
+            winRate = Math.max(1, winRate - winRateChange);
+            goldDiff -= rng.range(800, 1600);
+            deaths += 1;
+            
+            card('bad', curP.name, `
+              <b>【決策失敗】</b> ${c.failTxt}<br>
+              <div style="margin-top:5px; font-size:11px; color:var(--text-dim);">
+                📉 我方勝率變動：<b class="hl">${prevWin}% ➔ ${winRate}% (-${winRateChange}%)</b>
+              </div>
+            `);
+          }
+          
+          winRateHistory.push(winRate);
+          currentPhase++;
+          board(1);
+          runNextPhase();
         }
-        currentPhase++;
-        board(1);
-        runNextPhase();
-      }
-    })));
+      };
+    }));
   }
 
   runNextPhase();
