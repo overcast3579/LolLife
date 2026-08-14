@@ -2094,6 +2094,19 @@ function runProSplit(splitKey, onSplitDone) {
       card('bad', `第 ${season.currentRound + 1} 輪 賽事戰報 (替補席)`, `戰隊不幸失利，以 <b class="dn">1:2 負於 ${opp.name}</b>。`);
     }
     matchInfo.isFinished = true;
+
+    // Simulate background Academy match
+    if (season.academyStandings) {
+      const wonAcademy = rng.next() < (55 / 95);
+      if (wonAcademy) {
+        season.academyStandings[S.teamId].wins++;
+        season.academyStandings[opp.id].losses++;
+      } else {
+        season.academyStandings[S.teamId].losses++;
+        season.academyStandings[opp.id].wins++;
+      }
+    }
+
     simulateOtherTeams(opp.id);
     season.currentRound++;
     choose('本輪結束', [{ t: '繼續推進賽程 ▸', main: true, f: () => playSeasonStep() }]);
@@ -2259,6 +2272,17 @@ function runProSplit(splitKey, onSplitDone) {
     }
     matchInfo.isFinished = true;
 
+    // Record Academy Match result to standings
+    if (season.academyStandings) {
+      if (won) {
+        season.academyStandings[S.teamId].wins++;
+        season.academyStandings[opp.id].losses++;
+      } else {
+        season.academyStandings[S.teamId].losses++;
+        season.academyStandings[opp.id].wins++;
+      }
+    }
+
     // 2. Personal Academy match result
     const wasManual = S.currentSplitStats.matchesPlayed > season.currentRound;
     if (wasManual) {
@@ -2337,6 +2361,19 @@ function runProSplit(splitKey, onSplitDone) {
       card('bad', `第 ${season.currentRound + 1} 輪 常規賽戰報`, `隊伍配合出現失誤，以 <b class="dn">1:2 憾負 ${opp.name}</b>。`);
     }
     matchInfo.isFinished = true;
+
+    // Simulate background Academy match
+    if (season.academyStandings) {
+      const wonAcademy = rng.next() < (55 / 95);
+      if (wonAcademy) {
+        season.academyStandings[S.teamId].wins++;
+        season.academyStandings[opp.id].losses++;
+      } else {
+        season.academyStandings[S.teamId].losses++;
+        season.academyStandings[opp.id].wins++;
+      }
+    }
+
     simulateOtherTeams(opp.id);
     season.currentRound++;
     choose('本輪結束', [{ t: '繼續推進賽程 ▸', main: true, f: () => playSeasonStep() }]);
