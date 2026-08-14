@@ -2100,6 +2100,7 @@ function runProSplit(splitKey, onSplitDone) {
       const curMatch = season.schedule[season.currentRound];
       const curOpp = getTeamById(curMatch.oppTeamId);
       
+      // 1. Simulate First-team match
       const teamOvr = S.rosterStatus === 'STARTER' ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
       const won = rng.next() < (teamOvr / 100);
       
@@ -2136,18 +2137,37 @@ function runProSplit(splitKey, onSplitDone) {
           recordMatchStats(false, false);
           recordMatchStats(false, false);
         }
-      } else if (S.rosterStatus === 'ACADEMY') {
-        // Player is playing in Academy League
-        const wonAcademy = rng.next() < (ovr() / 95);
-        S.stats.matchesPlayed += 3;
-        S.stats.matchesWon += wonAcademy ? 2 : 1;
-        S.currentSplitStats.matchesPlayed += 3;
-        S.currentSplitStats.matchesWon += wonAcademy ? 2 : 1;
-        if (wonAcademy) {
+      }
+
+      // 2. Simulate Academy match
+      const wonAcademy = (S.rosterStatus === 'ACADEMY') 
+        ? (rng.next() < ((ovr() + getTacticModifier()) / 95))
+        : (rng.next() < (55 / 95));
+
+      if (wonAcademy) {
+        if (season.academyStandings) {
+          season.academyStandings[S.teamId].wins++;
+          season.academyStandings[curOpp.id].losses++;
+        }
+        if (S.rosterStatus === 'ACADEMY') {
+          S.stats.matchesPlayed += 3;
+          S.stats.matchesWon += 2;
+          S.currentSplitStats.matchesPlayed += 3;
+          S.currentSplitStats.matchesWon += 2;
           recordMatchStats(true, false);
           recordMatchStats(true, false);
           recordMatchStats(false, false);
-        } else {
+        }
+      } else {
+        if (season.academyStandings) {
+          season.academyStandings[S.teamId].losses++;
+          season.academyStandings[curOpp.id].wins++;
+        }
+        if (S.rosterStatus === 'ACADEMY') {
+          S.stats.matchesPlayed += 3;
+          S.stats.matchesWon += 1;
+          S.currentSplitStats.matchesPlayed += 3;
+          S.currentSplitStats.matchesWon += 1;
           recordMatchStats(true, false);
           recordMatchStats(false, false);
           recordMatchStats(false, false);
@@ -2158,7 +2178,13 @@ function runProSplit(splitKey, onSplitDone) {
       season.currentRound++;
     }
     
-    card('good', '例行賽全部模擬完畢！', `例行賽最終戰績為：<b class="hl">${season.standings[S.teamId].wins} 勝 ${season.standings[S.teamId].losses} 敗</b>`);
+    const isAcademy = S.rosterStatus === 'ACADEMY';
+    const targetStandings = (isAcademy && season.academyStandings) ? season.academyStandings : season.standings;
+    const finalWins = targetStandings[S.teamId].wins;
+    const finalLosses = targetStandings[S.teamId].losses;
+    const prefix = isAcademy ? '二軍' : '例行賽';
+    
+    card('good', '例行賽全部模擬完畢！', `${prefix}最終戰績為：<b class="hl">${finalWins} 勝 ${finalLosses} 敗</b>`);
     showStandingsCard();
     
     if (S.seasonSimMode === 'REGULAR_ONLY') {
