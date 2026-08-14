@@ -1340,6 +1340,34 @@ function runProSplit(splitKey, onSplitDone) {
   // Initialize current split stats
   S.currentSplitStats = { matchesPlayed: 0, matchesWon: 0, kills: 0, deaths: 0, assists: 0, pogCount: 0 };
 
+  // Select season simulation mode at the start of the split!
+  choose(`${splitInfo.name} · 賽事規劃決策`, [
+    {
+      t: '🎯 每場人工選擇 (逐輪手動推進)',
+      s: '每輪手動選擇進入比賽、快速模擬本輪或設定策略',
+      f: () => {
+        S.seasonSimMode = 'MANUAL';
+        playSeasonStep();
+      }
+    },
+    {
+      t: '⏩ 一鍵自動模擬整個常規賽 (僅例行賽)',
+      s: '直接自動跑完所有例行賽對局，並在季後賽前暫停讓您接手',
+      f: () => {
+        S.seasonSimMode = 'REGULAR_ONLY';
+        playSeasonStep();
+      }
+    },
+    {
+      t: '🏆 一鍵自動模擬整個賽季 (例行賽 + 季後賽)',
+      s: '自動模擬例行賽與季後賽，若獲得 MSI/Worlds 國際賽資格將暫停詢問',
+      f: () => {
+        S.seasonSimMode = 'FULL_SEASON';
+        playSeasonStep();
+      }
+    }
+  ]);
+
   function playSeasonStep() {
     board(1);
     const season = S.season;
@@ -1423,6 +1451,32 @@ function runProSplit(splitKey, onSplitDone) {
       return;
     }
 
+    // --- Automatic Simulation Modes Execution ---
+    if (S.seasonSimMode === 'REGULAR_ONLY' && season.stage === 'REGULAR') {
+      executeRegularSeasonSim();
+      return;
+    }
+    if (S.seasonSimMode === 'FULL_SEASON') {
+      if (season.stage === 'REGULAR') {
+        executeRegularSeasonSim();
+        return;
+      }
+      if (season.stage === 'PLAYOFFS_SEMI') {
+        const opp = getPlayoffsOpponent('SEMI');
+        const teamOvr = S.rosterStatus === 'STARTER' ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
+        const won = rng.next() < (teamOvr / 105);
+        resolvePlayoffsSemi(won, false);
+        return;
+      }
+      if (season.stage === 'PLAYOFFS_FINAL') {
+        const opp = getPlayoffsOpponent('FINAL');
+        const teamOvr = S.rosterStatus === 'STARTER' ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
+        const won = rng.next() < (teamOvr / 110);
+        resolvePlayoffsFinal(won, false);
+        return;
+      }
+    }
+
     if (season.stage === 'REGULAR') {
       if (season.currentRound === 3 && !season.midSplitEventTriggered) {
         season.midSplitEventTriggered = true;
@@ -1439,9 +1493,9 @@ function runProSplit(splitKey, onSplitDone) {
         if (isPlayerStarter) {
           choose(`${splitInfo.name} · 第 ${roundNum}/${season.schedule.length} 輪對決 (${nextOpp.name})`, [
             {
-              t: '🎮 親自出戰 (進入 BP 選角 & 7 階段決策)',
+              t: '🎮 進入本場比賽 (進行 BP 選角與手動對決)',
               main: true,
-              s: S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動選擇英雄，版本黑科技與關鍵對線/團戰策略',
+              s: S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動選擇英雄，進入 7 階段選線與團戰策略決策',
               f: () => {
                 interactiveBPDraft(nextOpp, meta, (won) => { resolveProMatchResult(won); });
               }
@@ -1456,46 +1510,19 @@ function runProSplit(splitKey, onSplitDone) {
               }
             },
             {
-              t: '⏩ 快速模擬剩餘所有例行賽',
-              s: '一鍵跳過例行賽階段，由 AI 跑完所有剩餘輪次',
+              t: '⏩ 模擬剩餘常規賽 (僅例行賽)',
+              s: '自動模擬完剩餘例行賽對局，並在季後賽前暫停讓您接手',
               f: () => {
-                card('info', '⏩ 正在模擬剩餘例行賽...', '全隊正在高強度備戰，AI 將為您完成剩餘的所有輪次對決。');
-                while (season.currentRound < season.schedule.length) {
-                  const curMatch = season.schedule[season.currentRound];
-                  const curOpp = getTeamById(curMatch.oppTeamId);
-                  
-                  const teamOvr = S.rosterStatus === 'STARTER' ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
-                  const won = rng.next() < (teamOvr / 100);
-                  
-                  if (won) {
-                    season.standings[S.teamId].wins++;
-                    season.standings[curOpp.id].losses++;
-                    curMatch.won = true;
-                    S.stats.matchesPlayed += 3;
-                    S.stats.matchesWon += 2;
-                    S.currentSplitStats.matchesPlayed += 3;
-                    S.currentSplitStats.matchesWon += 2;
-                  } else {
-                    season.standings[S.teamId].losses++;
-                    season.standings[curOpp.id].wins++;
-                    curMatch.won = false;
-                    S.stats.matchesPlayed += 3;
-                    S.stats.matchesWon += 1;
-                    S.currentSplitStats.matchesPlayed += 3;
-                    S.currentSplitStats.matchesWon += 1;
-                  }
-                  curMatch.isFinished = true;
-                  
-                  if (S.rosterStatus === 'STARTER') {
-                    recordMatchStats(won, false);
-                  }
-                  
-                  simulateOtherTeams(curOpp.id);
-                  season.currentRound++;
-                }
-                card('good', '例行賽全部模擬完畢！', `例行賽最終戰績為：<b class="hl">${season.standings[S.teamId].wins} 勝 ${season.standings[S.teamId].losses} 敗</b>`);
-                showStandingsCard();
-                checkPlayoffsQualification();
+                S.seasonSimMode = 'REGULAR_ONLY';
+                executeRegularSeasonSim();
+              }
+            },
+            {
+              t: '🏆 模擬整個賽季 (例行賽 + 季後賽)',
+              s: '自動模擬完剩餘例行賽與季後賽，若晉級國際賽將會暫停詢問',
+              f: () => {
+                S.seasonSimMode = 'FULL_SEASON';
+                executeRegularSeasonSim();
               }
             },
             {
@@ -1536,8 +1563,24 @@ function runProSplit(splitKey, onSplitDone) {
                 const trustGain = rng.range(8, 18);
                 S.coachTrust = Math.min(100, S.coachTrust + trustGain);
                 S.fatigue = Math.min(100, S.fatigue + 5);
-                card('good', '與教練戰術溝通', `你主動拿著筆記本找主教練討論上一輪的戰術失誤。教練對你的敬業態度深感欣慰！信任度提升 ${trustGain} 點！`);
+                card('good', '與教練戰術溝通', `快拿著筆記本找主教練討論上一輪的戰術失誤。教練對你的敬業態度深感欣慰！信任度提升 ${trustGain} 點！`);
                 resolveSubRound();
+              }
+            },
+            {
+              t: '⏩ 模擬剩餘常規賽 (僅例行賽)',
+              s: '自動模擬完剩餘例行賽對局，並在季後賽前暫停讓您接手',
+              f: () => {
+                S.seasonSimMode = 'REGULAR_ONLY';
+                executeRegularSeasonSim();
+              }
+            },
+            {
+              t: '🏆 模擬整個賽季 (例行賽 + 季後賽)',
+              s: '自動模擬完剩餘例行賽與季後賽，若晉級國際賽將會暫停詢問',
+              f: () => {
+                S.seasonSimMode = 'FULL_SEASON';
+                executeRegularSeasonSim();
               }
             },
             {
@@ -1559,7 +1602,7 @@ function runProSplit(splitKey, onSplitDone) {
       const isPlayerStarter = S.rosterStatus === 'STARTER';
       choose(`🏆 季後賽準決賽 BO5 (${opp.name})`, [
         {
-          t: '🎮 親自出戰 (代表決勝局 2:2 生死戰)',
+          t: '🎮 進入決勝局對決 (決勝生死戰)',
           main: true,
           disabled: !isPlayerStarter,
           s: isPlayerStarter ? (S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動選擇英雄，贏下這一局即可挺進總決賽！') : '💺 您目前是替補，無法代表戰隊出戰關鍵對局',
@@ -1590,7 +1633,7 @@ function runProSplit(splitKey, onSplitDone) {
       const isPlayerStarter = S.rosterStatus === 'STARTER';
       choose(`🏆 季後賽總決賽 BO5 (${opp.name})`, [
         {
-          t: '🎮 親自出戰 (代表總決賽 2:2 冠軍點決戰)',
+          t: '🎮 進入總決賽對決 (總冠軍點生死戰)',
           main: true,
           disabled: !isPlayerStarter,
           s: isPlayerStarter ? (S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '手動進行選角與戰術對決，捧起冠軍獎盃與 FMVP 榮譽！') : '💺 您目前是替補，無法代表戰隊出戰決賽',
@@ -1620,9 +1663,11 @@ function runProSplit(splitKey, onSplitDone) {
       const intlOpp = getTeamById(intlOppId) || TEAMS[8];
       const tourneyInfo = INTERNATIONAL_TOURNAMENTS[splitInfo.qualifiesFor];
       const isPlayerStarter = S.rosterStatus === 'STARTER';
-      choose(`🌐 ${tourneyInfo.name} 淘汰賽淘汰局 (${intlOpp.name})`, [
+      
+      // Stop and ALWAYS ask before simulating international matches!
+      choose(`🌐 ${tourneyInfo.name} 淘汰賽階段`, [
         {
-          t: '🎮 親自出戰 (代表國際賽關鍵死鬥局)',
+          t: '🎮 親自出戰 (手動 BP & 決勝對局)',
           main: true,
           disabled: !isPlayerStarter,
           s: isPlayerStarter ? (S.injuryRoundsLeft > 0 ? '⚠️ 注意：您目前帶傷上陣 (OVR -15)' : '與世界頂級賽區豪門對決，挑戰國際之巔！') : '💺 您目前是替補，無緣出戰國際賽淘汰賽',
@@ -1637,7 +1682,7 @@ function runProSplit(splitKey, onSplitDone) {
           }
         },
         {
-          t: '⚡ 快速模擬國際賽',
+          t: '⚡ 快速模擬此國際賽事',
           s: '系統依綜合實力計算世界賽果',
           f: () => {
             const teamOvr = isPlayerStarter ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
@@ -1676,6 +1721,53 @@ function runProSplit(splitKey, onSplitDone) {
     simulateOtherTeams(opp.id);
     season.currentRound++;
     choose('本輪結束', [{ t: '繼續推進賽程 ▸', main: true, f: () => playSeasonStep() }]);
+  }
+
+  function executeRegularSeasonSim() {
+    card('info', '⏩ 正在模擬剩餘例行賽...', '全隊正在高強度備戰，AI 將為您完成剩餘的所有輪次對決。');
+    const season = S.season;
+    while (season.currentRound < season.schedule.length) {
+      const curMatch = season.schedule[season.currentRound];
+      const curOpp = getTeamById(curMatch.oppTeamId);
+      
+      const teamOvr = S.rosterStatus === 'STARTER' ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
+      const won = rng.next() < (teamOvr / 100);
+      
+      if (won) {
+        season.standings[S.teamId].wins++;
+        season.standings[curOpp.id].losses++;
+        curMatch.won = true;
+        S.stats.matchesPlayed += 3;
+        S.stats.matchesWon += 2;
+        S.currentSplitStats.matchesPlayed += 3;
+        S.currentSplitStats.matchesWon += 2;
+      } else {
+        season.standings[S.teamId].losses++;
+        season.standings[curOpp.id].wins++;
+        curMatch.won = false;
+        S.stats.matchesPlayed += 3;
+        S.stats.matchesWon += 1;
+        S.currentSplitStats.matchesPlayed += 3;
+        S.currentSplitStats.matchesWon += 1;
+      }
+      curMatch.isFinished = true;
+      
+      if (S.rosterStatus === 'STARTER') {
+        recordMatchStats(won, false);
+      }
+      
+      simulateOtherTeams(curOpp.id);
+      season.currentRound++;
+    }
+    
+    card('good', '例行賽全部模擬完畢！', `例行賽最終戰績為：<b class="hl">${season.standings[S.teamId].wins} 勝 ${season.standings[S.teamId].losses} 敗</b>`);
+    showStandingsCard();
+    
+    if (S.seasonSimMode === 'REGULAR_ONLY') {
+      S.seasonSimMode = 'MANUAL';
+    }
+    
+    checkPlayoffsQualification();
   }
 
   function showTacticsMenu() {
@@ -1949,7 +2041,10 @@ function runProSplit(splitKey, onSplitDone) {
     if (wonChamp) tlPush(`${splitInfo.shortName} 冠軍 🏆`);
     else if (S.season.stage === 'PLAYOFFS_FINAL') tlPush(`${splitInfo.shortName} 亞軍`);
     else tlPush(`${splitInfo.shortName} 完畢`);
-    choose(`${splitInfo.name} 完畢`, [{ t: '繼續推進賽程 ▸', main: true, f: onSplitDone }]);
+
+    processSplitSettlementEvaluation(splitKey, splitInfo, wonChamp, () => {
+      choose(`${splitInfo.name} 完畢`, [{ t: '繼續推進賽程 ▸', main: true, f: onSplitDone }]);
+    });
   }
 
   function showSplitStatsCard(splitName) {
@@ -1966,6 +2061,163 @@ function runProSplit(splitKey, onSplitDone) {
   }
 
   playSeasonStep();
+}
+
+// ==================== 季末屬性扣減與點數加點面板 ====================
+function processSplitSettlementEvaluation(splitKey, splitInfo, wonChamp, onDone) {
+  const st = S.currentSplitStats;
+  if (!st) {
+    onDone();
+    return;
+  }
+  
+  let winRate = st.matchesPlayed > 0 ? (st.matchesWon / st.matchesPlayed) : 0;
+  let kda = st.deaths > 0 ? ((st.kills + st.assists) / st.deaths) : (st.kills + st.assists);
+  let avgDeaths = st.matchesPlayed > 0 ? (st.deaths / st.matchesPlayed) : 0;
+  let avgAssists = st.matchesPlayed > 0 ? (st.assists / st.matchesPlayed) : 0;
+
+  let penaltyTexts = [];
+  
+  // 1. Line phase penalty (High deaths)
+  if (avgDeaths > 4.2) {
+    const penalty = rng.range(2, 4);
+    S.ab.mechanics = Math.max(20, S.ab.mechanics - penalty);
+    penaltyTexts.push(`⚠️ <b>對線失衡</b>：本賽季你平均每場陣亡達 ${avgDeaths.toFixed(1)} 次，對線頻繁爆線被單殺，<b>操作扣減 ${penalty} 點</b>！`);
+  }
+  
+  // 2. Mental/Stress penalty (Low winrate)
+  if (winRate < 0.42) {
+    const penalty = rng.range(3, 5);
+    S.ab.mental = Math.max(20, S.ab.mental - penalty);
+    penaltyTexts.push(`⚠️ <b>心態炸裂</b>：隊伍戰績低迷 (勝率 ${(winRate*100).toFixed(0)}%)，連敗導致你心理防線崩潰，<b>心態扣減 ${penalty} 點</b>！`);
+  }
+  
+  // 3. Team cohesion/Macro penalty (Low assists or offmeta)
+  if (avgAssists < 4.0 || (S.tactics && S.tactics.banPickPreference === 'OFFMETA')) {
+    const penalty = rng.range(2, 4);
+    S.ab.macro = Math.max(20, S.ab.macro - penalty);
+    S.ab.team_cohesion = Math.max(20, S.ab.team_cohesion - penalty);
+    penaltyTexts.push(`⚠️ <b>團隊脫節</b>：本賽季平均助攻偏低 (${avgAssists.toFixed(1)} 次) 或常規賽頻繁使用黑科技，團隊配合生疏，<b>觀念與凝聚力各扣減 ${penalty} 點</b>！`);
+  }
+  
+  if (penaltyTexts.length > 0) {
+    card('bad', '📉 賽季表現不佳：能力值懲罰扣減', penaltyTexts.join('<br><br>'));
+  } else {
+    card('good', '✨ 穩定發揮', '本賽季你在各項賽事中表現良好，基礎屬性保持穩定，沒有受到懲罰扣減！');
+  }
+
+  // Calculate point awards
+  let pointsAwarded = 5; // baseline
+  let awardReasons = ['• 賽季參賽基礎獎勵：+5 點'];
+  
+  if (st.pogCount > 0) {
+    const pogPts = st.pogCount * 2;
+    pointsAwarded += pogPts;
+    awardReasons.push(`• 獲得單場 MVP (POG) 共 ${st.pogCount} 次：+${pogPts} 點`);
+  }
+  
+  if (kda >= 4.0) {
+    pointsAwarded += 5;
+    awardReasons.push(`• 賽季頂尖 KDA (${kda.toFixed(2)})：+5 點`);
+  } else if (kda >= 3.0) {
+    pointsAwarded += 3;
+    awardReasons.push(`• 賽季優秀 KDA (${kda.toFixed(2)})：+3 點`);
+  }
+  
+  if (wonChamp) {
+    pointsAwarded += 15;
+    awardReasons.push('• 捧起賽區總冠軍銀盃：+15 點');
+  } else if (S.season.stage === 'PLAYOFFS_FINAL') {
+    pointsAwarded += 8;
+    awardReasons.push('• 獲得賽區亞軍席位：+8 點');
+  }
+  
+  card('gold', `🎯 賽季結算天賦點數獎勵 (共 +${pointsAwarded} 點)`, `
+    恭喜！根據本賽季的賽場評價與亮眼成就，你獲得了 <b>${pointsAwarded}</b> 點自由分配屬性點數：<br><br>
+    ${awardReasons.join('<br>')}
+  `);
+  
+  choose('開始分配點數', [
+    {
+      t: '進入屬性分配面板 ▸',
+      main: true,
+      f: () => allocateSplitPoints(pointsAwarded, onDone)
+    }
+  ]);
+}
+
+function allocateSplitPoints(pointsEarned, onDone) {
+  if (pointsEarned <= 0) {
+    onDone();
+    return;
+  }
+  
+  function renderAllocationMenu() {
+    board(1);
+    choose(`🎯 季末天賦加點 (可用點數: ${pointsEarned})`, [
+      {
+        t: `➕ 提升操作 (當前: ${S.ab.mechanics} / 上限: ${S.potentialLimit})`,
+        s: '消耗 1 點數，提升 1 點操作基礎',
+        disabled: S.ab.mechanics >= S.potentialLimit,
+        f: () => {
+          S.ab.mechanics++;
+          pointsEarned--;
+          renderAllocationMenu();
+        }
+      },
+      {
+        t: `➕ 提升觀念 (當前: ${S.ab.macro} / 上限: ${S.potentialLimit})`,
+        s: '消耗 1 點數，提升 1 點觀念大局觀',
+        disabled: S.ab.macro >= S.potentialLimit,
+        f: () => {
+          S.ab.macro++;
+          pointsEarned--;
+          renderAllocationMenu();
+        }
+      },
+      {
+        t: `➕ 提升心態 (當前: ${S.ab.mental} / 上限: 100)`,
+        s: '消耗 1 點數，提升 1 點抗壓心理素質',
+        disabled: S.ab.mental >= 100,
+        f: () => {
+          S.ab.mental++;
+          pointsEarned--;
+          renderAllocationMenu();
+        }
+      },
+      {
+        t: `➕ 提升團隊凝聚力 (當前: ${S.ab.team_cohesion} / 上限: 100)`,
+        s: '消耗 1 點數，提升 1 點隊友默契配合力',
+        disabled: S.ab.team_cohesion >= 100,
+        f: () => {
+          S.ab.team_cohesion++;
+          pointsEarned--;
+          renderAllocationMenu();
+        }
+      },
+      {
+        t: `➕ 療養手腕健康 (當前: ${S.wristHealth}%)`,
+        s: '消耗 1 點數，恢復 3% 手腕健康度',
+        disabled: S.wristHealth >= 100,
+        f: () => {
+          S.wristHealth = Math.min(100, S.wristHealth + 3);
+          pointsEarned--;
+          renderAllocationMenu();
+        }
+      },
+      {
+        t: '◀ 確定完成分配',
+        main: true,
+        disabled: pointsEarned > 0, 
+        s: pointsEarned > 0 ? `請先分配完剩餘的 ${pointsEarned} 點數` : '完成加點並進入下一階段',
+        f: () => {
+          onDone();
+        }
+      }
+    ]);
+  }
+  
+  renderAllocationMenu();
 }
 
 // 4. 轉會市場與 LCK/LPL 旅外
