@@ -2141,8 +2141,8 @@ function processSplitSettlementEvaluation(splitKey, splitInfo, wonChamp, onDone)
   if (avgAssists < 4.0 || (S.tactics && S.tactics.banPickPreference === 'OFFMETA')) {
     const penalty = rng.range(2, 4);
     S.ab.macro = Math.max(20, S.ab.macro - penalty);
-    S.ab.team_cohesion = Math.max(20, S.ab.team_cohesion - penalty);
-    penaltyTexts.push(`⚠️ <b>團隊脫節</b>：本賽季平均助攻偏低 (${avgAssists.toFixed(1)} 次) 或常規賽頻繁使用黑科技，團隊配合生疏，<b>觀念與凝聚力各扣減 ${penalty} 點</b>！`);
+    S.ab.communication = Math.max(20, S.ab.communication - penalty);
+    penaltyTexts.push(`⚠️ <b>團隊脫節</b>：本賽季平均助攻偏低 (${avgAssists.toFixed(1)} 次) 或常規賽頻繁使用黑科技，團隊配合生疏，<b>觀念與溝通各扣減 ${penalty} 點</b>！`);
   }
   
   if (penaltyTexts.length > 0) {
@@ -2201,9 +2201,9 @@ function allocateSplitPoints(pointsEarned, onDone) {
     board(1);
     choose(`🎯 季末天賦加點 (可用點數: ${pointsEarned})`, [
       {
-        t: `➕ 提升操作 (當前: ${S.ab.mechanics} / 上限: ${S.potentialLimit})`,
+        t: `➕ 提升操作 (當前: ${S.ab.mechanics} / 上限: ${S.pot.mechanics})`,
         s: '消耗 1 點數，提升 1 點操作基礎',
-        disabled: S.ab.mechanics >= S.potentialLimit,
+        disabled: S.ab.mechanics >= S.pot.mechanics,
         f: () => {
           S.ab.mechanics++;
           pointsEarned--;
@@ -2211,9 +2211,9 @@ function allocateSplitPoints(pointsEarned, onDone) {
         }
       },
       {
-        t: `➕ 提升觀念 (當前: ${S.ab.macro} / 上限: ${S.potentialLimit})`,
+        t: `➕ 提升觀念 (當前: ${S.ab.macro} / 上限: ${S.pot.macro})`,
         s: '消耗 1 點數，提升 1 點觀念大局觀',
-        disabled: S.ab.macro >= S.potentialLimit,
+        disabled: S.ab.macro >= S.pot.macro,
         f: () => {
           S.ab.macro++;
           pointsEarned--;
@@ -2221,9 +2221,9 @@ function allocateSplitPoints(pointsEarned, onDone) {
         }
       },
       {
-        t: `➕ 提升心態 (當前: ${S.ab.mental} / 上限: 100)`,
+        t: `➕ 提升心態 (當前: ${S.ab.mental} / 上限: ${S.pot.mental})`,
         s: '消耗 1 點數，提升 1 點抗壓心理素質',
-        disabled: S.ab.mental >= 100,
+        disabled: S.ab.mental >= S.pot.mental,
         f: () => {
           S.ab.mental++;
           pointsEarned--;
@@ -2231,11 +2231,11 @@ function allocateSplitPoints(pointsEarned, onDone) {
         }
       },
       {
-        t: `➕ 提升團隊凝聚力 (當前: ${S.ab.team_cohesion} / 上限: 100)`,
-        s: '消耗 1 點數，提升 1 點隊友默契配合力',
-        disabled: S.ab.team_cohesion >= 100,
+        t: `➕ 提升團隊溝通 (當前: ${S.ab.communication} / 上限: ${S.pot.communication})`,
+        s: '消耗 1 點數，提升 1 點隊友默契配合與指揮溝通力',
+        disabled: S.ab.communication >= S.pot.communication,
         f: () => {
-          S.ab.team_cohesion++;
+          S.ab.communication++;
           pointsEarned--;
           renderAllocationMenu();
         }
