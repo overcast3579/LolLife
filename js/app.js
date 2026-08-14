@@ -2542,6 +2542,7 @@ function runProSplit(splitKey, onSplitDone) {
     const season = S.season;
     const isStarterOrAcademy = S.rosterStatus === 'STARTER' || S.rosterStatus === 'ACADEMY';
     const isAcademy = S.rosterStatus === 'ACADEMY';
+    const isStarter = S.rosterStatus === 'STARTER';
     
     if (isStarterOrAcademy) {
       if (wasManual) {
@@ -2581,8 +2582,13 @@ function runProSplit(splitKey, onSplitDone) {
         card('gold', '🏆 榮獲二軍聯賽總冠軍！', '你率領二隊在總決賽打滿五局捧起二軍聯賽總冠軍銀盃！展現出卓越實力！');
         choose('決賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone) }]);
       } else {
-        S.popularity += 25;
-        card('gold', `🏆 榮獲 ${splitInfo.name} 賽區總冠軍！`, '你在總決賽決勝局上演天秀繞後秒殺雙C！帶領全隊捧起冠軍銀盃，榮膺季後賽 MVP (FMVP)！');
+        if (isStarter) {
+          S.popularity += 25;
+          card('gold', `🏆 榮獲 ${splitInfo.name} 賽區總冠軍！`, '你在總決賽決勝局上演天秀繞後秒殺雙C！帶領全隊捧起冠軍銀盃，榮膺季後賽 MVP (FMVP)！');
+        } else {
+          S.popularity += 10;
+          card('gold', `🏆 榮獲 ${splitInfo.name} 賽區總冠軍！`, '你在替補席興奮地衝上舞台，見證隊友捧起冠軍銀盃！作為戰隊的一份子，你與大家共同分享奪冠的喜悅！');
+        }
         if (splitInfo.qualifiesFor) {
           season.stage = 'INTERNATIONAL';
           choose('決賽結束', [{ t: `進軍 ${INTERNATIONAL_TOURNAMENTS[splitInfo.qualifiesFor].name} 國際賽 ▸`, main: true, f: () => playSeasonStep() }]);
@@ -2594,8 +2600,13 @@ function runProSplit(splitKey, onSplitDone) {
         card('good', '榮獲二軍總決賽亞軍！', '二隊在總決賽打滿五局惜敗，榮獲二軍亞軍席位。');
         choose('決賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone) }]);
       } else {
-        S.popularity += 10;
-        card('good', '榮獲 LCP 總決賽亞軍！', '在總決賽打滿五局憾負，獲得賽區亞軍席位。');
+        if (isStarter) {
+          S.popularity += 10;
+          card('good', '榮獲 LCP 總決賽亞軍！', '在總決賽打滿五局憾負，獲得賽區亞軍席位。');
+        } else {
+          S.popularity += 5;
+          card('good', '榮獲 LCP 總決賽亞軍！', '隊伍在總決賽鏖戰五局遺憾落敗，榮獲賽區亞軍。你在替補席安慰著失落的隊友。');
+        }
         const qualifiesFor = splitInfo.qualifiesFor;
         const runnerUpQualifies = (qualifiesFor === 'MSI' || qualifiesFor === 'WORLDS');
         if (qualifiesFor && runnerUpQualifies) {
@@ -2607,9 +2618,9 @@ function runProSplit(splitKey, onSplitDone) {
   }
 
   function resolveInternationalMatch(won, tourneyInfo, wasManual) {
-    const isPlayerStarter = S.rosterStatus === 'STARTER';
+    const isStarter = S.rosterStatus === 'STARTER';
     
-    if (isPlayerStarter) {
+    if (isStarter) {
       if (wasManual) {
         S.stats.matchesPlayed += 4;
         S.stats.matchesWon += won ? 2 : 2;
@@ -2644,16 +2655,30 @@ function runProSplit(splitKey, onSplitDone) {
       S.stats.intlTitles += 1;
       if (tourneyInfo.id === 'WORLDS') {
         S.stats.worldsTitles += 1;
-        S.popularity += 50;
-        card('gold', `🏆【世界之巔】${tourneyInfo.name} 總冠軍 & FMVP！`, '在全球數千萬玩家矚目下，你在總決賽世界之巔力挽狂瀾！率隊奪下召喚師水晶杯，榮膺世界總決賽 FMVP！名留青史！');
-        unlockTrait('BIG_STAGE_HERO');
+        if (isStarter) {
+          S.popularity += 50;
+          card('gold', `🏆【世界之巔】${tourneyInfo.name} 總冠軍 & FMVP！`, '在全球數千萬玩家矚目下，你在總決賽世界之巔力挽狂瀾！率隊奪下召喚師水晶杯，榮膺世界總決賽 FMVP！名留青史！');
+          unlockTrait('BIG_STAGE_HERO');
+        } else {
+          S.popularity += 15;
+          card('gold', `🏆【世界之巔】${tourneyInfo.name} 總冠軍！`, '在全球數千萬玩家矚目下，隊伍力克強敵奪下召喚師水晶杯！你在替補席與隊友一同慶祝，登頂世界之巔！');
+        }
       } else {
-        S.popularity += 30;
-        card('gold', `🏆 榮獲 ${tourneyInfo.name} 國際賽總冠軍！`, `擊敗世界頂級賽區各路豪強，登頂 ${tourneyInfo.name} 冠軍寶座！`);
+        if (isStarter) {
+          S.popularity += 30;
+          card('gold', `🏆 榮獲 ${tourneyInfo.name} 國際賽總冠軍！`, `擊敗世界頂級賽區各路豪強，你率隊登頂 ${tourneyInfo.name} 冠軍寶座！`);
+        } else {
+          S.popularity += 10;
+          card('gold', `🏆 榮獲 ${tourneyInfo.name} 國際賽總冠軍！`, `擊敗世界頂級賽區各路豪強，隊伍成功登頂 ${tourneyInfo.name} 冠軍寶座！你在替補席分享了隊伍的最高榮譽！`);
+        }
       }
       choose('世界賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone) }]);
     } else {
-      card('info', `世界賽出局`, `在 ${tourneyInfo.name} 淘汰賽階段拼盡全力，遺憾止步四強。`);
+      if (isStarter) {
+        card('info', `世界賽出局`, `在 ${tourneyInfo.name} 淘汰賽階段拼盡全力，遺憾止步四強。`);
+      } else {
+        card('info', `世界賽出局`, `隊伍在 ${tourneyInfo.name} 淘汰賽階段遺憾止步四強，無緣總決賽。`);
+      }
       choose('世界賽結束', [{ t: '繼續推進 ▸', main: true, f: () => proceedToSplitSettlement(splitKey, splitInfo, false, onSplitDone) }]);
     }
   }
