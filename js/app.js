@@ -1124,53 +1124,98 @@ function run7PhaseMatch(oppTeam, chosenChampId, onMatchDone) {
 }
 
 // ==================== 2. 英雄池特訓 ====================
-function trainChampionMastery(onDone) {
+function trainChampionMastery(slots = 3, onDone) {
   const act = $('act');
   act.style.display = 'block';
+
+  let remainingSlots = slots;
+  const hist = []; // [{ cId, addedPoints, addedSignature }]
 
   const roleChamps = CHAMPIONS.filter(c => c.primaryRole === S.pos || c.roles.includes(S.pos));
   const offChamps = CHAMPIONS.filter(c => c.primaryRole !== S.pos && !c.roles.includes(S.pos)).slice(0, 6);
   const list = [...roleChamps, ...offChamps];
 
-  act.innerHTML = `
-    <div class="title">🎯 英雄自主特訓 (提升熟練度與招牌)</div>
-    <div style="font-size:12px;color:var(--dim);margin-bottom:8px;">選擇一位英雄進行深度特訓 (+35 點熟練度)：</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(105px,1fr));gap:6px;max-height:180px;overflow-y:auto;background:var(--panel2);padding:8px;border-radius:var(--r);margin-bottom:10px;">
-      ${list.map(c => {
-        const pts = S.masteries[c.id] || 0;
-        const mi = getMasteryInfo(pts);
-        return `
-          <button class="btn btn-train-champ" data-id="${c.id}" style="padding:6px;font-size:11.5px;text-align:center;margin:0;">
-            <strong>${c.name}</strong><br>
-            <small style="color:var(--accent);">${mi.name} (${pts}點)</small>
-          </button>
-        `;
-      }).join('')}
-    </div>
-    <button class="btn" id="btn-cancel-train" style="text-align:center;">返回 ▸</button>
-  `;
+  function renderTrainMenu() {
+    board(1);
+    act.innerHTML = `
+      <div class="title">🎯 英雄自主特訓 (剩餘訓練次數: ${remainingSlots} 次)</div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:8px;">
+        新賽季開賽前特訓。每消耗 1 次訓練機會，可使指定英雄熟練度 <b>+35 點</b>：
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(105px,1fr));gap:6px;max-height:180px;overflow-y:auto;background:var(--panel2);padding:8px;border-radius:var(--r);margin-bottom:10px;">
+        ${list.map(c => {
+          const pts = S.masteries[c.id] || 0;
+          const mi = getMasteryInfo(pts);
+          return `
+            <button class="btn btn-train-champ" data-id="${c.id}" style="padding:6px;font-size:11.5px;text-align:center;margin:0;" ${remainingSlots <= 0 ? 'disabled style="opacity:0.5;cursor:default;"' : ''}>
+              <strong>${c.name}</strong><br>
+              <small style="color:var(--accent);">${mi.name} (${pts}點)</small>
+            </button>
+          `;
+        }).join('')}
+      </div>
+      <div class="row2" style="display:flex; gap:10px;">
+        <button class="btn" id="btn-undo-train" style="text-align:center; flex:1; ${hist.length === 0 ? 'opacity:0.4; cursor:default;' : ''}" ${hist.length === 0 ? 'disabled' : ''}>
+          ↩ 退回一步
+        </button>
+        <button class="btn main" id="btn-finish-train" style="text-align:center; flex:1;">
+          ${remainingSlots <= 0 ? '完成特訓，開啟新賽季 ▸' : '跳過特訓，直接開賽 ▸'}
+        </button>
+      </div>
+    `;
 
-  act.querySelectorAll('.btn-train-champ').forEach(btn => {
-    btn.onclick = () => {
-      const cId = btn.getAttribute('data-id');
-      const champ = getChampionById(cId);
-      S.masteries[cId] = (S.masteries[cId] || 0) + 35;
-      const newMi = getMasteryInfo(S.masteries[cId]);
-      if (newMi.level >= 5 && !S.signatureChamps.includes(cId)) {
-        S.signatureChamps.push(cId);
-        card('gold', '招牌英雄晉升！', `你的【${champ.name}】已達到 <b class="hl">${newMi.name}</b>！賽場上將觸發更多專屬高光決策！`);
-      } else {
-        card('good', '特訓完成', `自主特訓了【${champ.name}】，熟練度提升至 <b class="hl">${newMi.name} (${S.masteries[cId]}點)</b>！`);
-      }
-      act.style.display = 'none';
-      onDone();
-    };
-  });
+    // Click on champion button to train
+    act.querySelectorAll('.btn-train-champ').forEach(btn => {
+      btn.onclick = () => {
+        if (remainingSlots <= 0) return;
+        const cId = btn.getAttribute('data-id');
+        const champ = getChampionById(cId);
+        
+        S.masteries[cId] = (S.masteries[cId] || 0) + 35;
+        const newMi = getMasteryInfo(S.masteries[cId]);
+        
+        let addedSignature = false;
+        if (newMi.level >= 5 && !S.signatureChamps.includes(cId)) {
+          S.signatureChamps.push(cId);
+          addedSignature = true;
+          card('gold', '招牌英雄晉升！', `你的【${champ.name}】已達到 <b class="hl">${newMi.name}</b>！賽場上將觸發更多專屬高光決策！`);
+        } else {
+          card('good', '特訓完成', `自主特訓了【${champ.name}】，熟練度提升至 <b class="hl">${newMi.name} (${S.masteries[cId]}點)</b>！`);
+        }
+        
+        hist.push({ cId, addedPoints: 35, addedSignature });
+        remainingSlots--;
+        
+        renderTrainMenu();
+      };
+    });
 
-  $('btn-cancel-train').onclick = () => {
-    act.style.display = 'none';
-    onDone();
-  };
+    // Undo button
+    const btnUndo = $('btn-undo-train');
+    if (btnUndo && hist.length > 0) {
+      btnUndo.onclick = () => {
+        const last = hist.pop();
+        S.masteries[last.cId] = Math.max(0, S.masteries[last.cId] - last.addedPoints);
+        if (last.addedSignature) {
+          S.signatureChamps = S.signatureChamps.filter(id => id !== last.cId);
+        }
+        remainingSlots++;
+        board(1);
+        renderTrainMenu();
+      };
+    }
+
+    // Finish button
+    const btnFinish = $('btn-finish-train');
+    if (btnFinish) {
+      btnFinish.onclick = () => {
+        act.style.display = 'none';
+        onDone();
+      };
+    }
+  }
+
+  renderTrainMenu();
 }
 
 // ==================== 遊戲主循環 (業餘 ➔ 職業 ➔ 轉會 ➔ 退役) ====================
@@ -1311,10 +1356,9 @@ function startNextProYear() {
 
   // 季前特訓
   rollDice(4, `${S.age}歲 季前特訓加點`, () => {
-    choose('季前準備就緒', [
-      { t: '🎯 進行英雄自主特訓', s: '提升專精英雄熟練度', f: () => trainChampionMastery(() => runProSplit('SPLIT_1', () => runProSplit('SPLIT_2', () => runProSplit('SPLIT_3', () => phaseYearEndTransfer())))) },
-      { t: '⚔️ 直接開啟 Split 1 例行賽', main: true, f: () => runProSplit('SPLIT_1', () => runProSplit('SPLIT_2', () => runProSplit('SPLIT_3', () => phaseYearEndTransfer()))) }
-    ]);
+    trainChampionMastery(3, () => {
+      runProSplit('SPLIT_1', () => runProSplit('SPLIT_2', () => runProSplit('SPLIT_3', () => phaseYearEndTransfer())));
+    });
   });
 }
 
