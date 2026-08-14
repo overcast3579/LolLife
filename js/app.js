@@ -3278,7 +3278,7 @@ function phaseYearEndTransfer() {
   const pOvr = ovr();
   const offers = [];
 
-  // 原隊續約
+  // 1. 原隊續約
   offers.push({
     teamName: S.team,
     teamId: S.teamId,
@@ -3287,35 +3287,69 @@ function phaseYearEndTransfer() {
     competitorOvr: S.benchCompetitorOvr || 65
   });
 
-  // 國內豪門
-  if (pOvr >= 66) {
-    const fsgRating = getTeamById('FSG')?.baseRating || 78;
-    offers.push({
-      teamName: 'Flying Steel Gaming (飛鋼電競)',
-      teamId: 'FSG',
-      salary: 3200000,
-      desc: 'LCP 頂薪邀請',
-      competitorOvr: rng.range(fsgRating - 3, fsgRating + 2)
-    });
-  }
+  // 2. 獲取所有專業隊伍 (排除原戰隊和業餘隊)
+  const proTeams = TEAMS.filter(t => t.id !== S.teamId && t.region !== 'AMATEUR_TW');
 
-  // 旅外 LCK / LPL
-  if (pOvr >= 72 || S.stats.worldsTitles >= 1) {
-    const aoRating = getTeamById('AO')?.baseRating || 88;
-    const bgRating = getTeamById('BG')?.baseRating || 88;
-    offers.push({
-      teamName: 'Apex One (南韓 LCK 豪門 AO)',
-      teamId: 'AO',
-      salary: 16000000,
-      desc: 'LCK 天價旅外挑戰',
-      competitorOvr: rng.range(aoRating - 3, aoRating + 2)
-    });
-    offers.push({
-      teamName: 'Byte Gaming (中國 LPL 頂級隊 BG)',
-      teamId: 'BG',
-      salary: 19000000,
-      desc: 'LPL 頂級全華班',
-      competitorOvr: rng.range(bgRating - 3, bgRating + 2)
+  // 分流篩選適合的戰隊
+  const lcpCandidates = [];
+  const lckLplCandidates = [];
+
+  proTeams.forEach(t => {
+    // 基礎年薪算法：依照主角 OVR 以及戰隊強度加權
+    const baseVal = Math.max(50, pOvr);
+    let baseSalary = Math.round(Math.pow(baseVal / 50, 4.2) * 250000);
+    
+    // 依照戰隊強度微調薪資
+    baseSalary = Math.round(baseSalary * (t.baseRating / 72));
+    
+    let salary = Math.round(baseSalary * rng.range(85, 115) / 100);
+    const competitorOvr = rng.range(t.baseRating - 3, t.baseRating + 2);
+
+    if (t.region === 'LCP') {
+      // 只要 OVR 達到 50 以上，LCP 戰隊就可能拋出橄欖枝
+      if (pOvr >= 50) {
+        lcpCandidates.push({
+          teamName: t.name,
+          teamId: t.id,
+          salary: salary,
+          desc: `LCP 聯賽合約`,
+          competitorOvr: competitorOvr
+        });
+      }
+    } else if (t.region === 'LCK' || t.region === 'LPL') {
+      // 旅外豪門：需要 OVR 70 以上，或得過世界冠軍
+      if (pOvr >= 70 || S.stats.worldsTitles >= 1) {
+        lckLplCandidates.push({
+          teamName: `${t.region === 'LCK' ? '南韓 LCK' : '中國 LPL'} · ${t.name}`,
+          teamId: t.id,
+          salary: Math.round(salary * 2.2), // 旅外薪水翻倍！
+          desc: `${t.region} 頂級旅外挑戰`,
+          competitorOvr: competitorOvr
+        });
+      }
+    }
+  });
+
+  // 從 LCP 候選中隨機挑選 3 個 (如果大於 3 個的話)
+  const shuffledLcp = [...lcpCandidates].sort(() => rng.next() - 0.5);
+  shuffledLcp.slice(0, 3).forEach(o => offers.push(o));
+
+  // 從 LCK/LPL 候選中隨機挑選 2 個
+  const shuffledForeign = [...lckLplCandidates].sort(() => rng.next() - 0.5);
+  shuffledForeign.slice(0, 2).forEach(o => offers.push(o));
+
+  // 如果 LCP 候選極少，保證至少隨機生成 2 家 LCP 合約
+  if (offers.length < 3) {
+    const backupTeams = TEAMS.filter(t => t.region === 'LCP' && t.id !== S.teamId).slice(0, 2);
+    backupTeams.forEach(t => {
+      const competitorOvr = rng.range(t.baseRating - 3, t.baseRating + 2);
+      offers.push({
+        teamName: t.name,
+        teamId: t.id,
+        salary: Math.round(Math.pow(Math.max(50, pOvr)/50, 4) * 200000 * (t.baseRating/72)),
+        desc: 'LCP 聯賽培訓合約',
+        competitorOvr: competitorOvr
+      });
     });
   }
 
@@ -3324,7 +3358,7 @@ function phaseYearEndTransfer() {
   const optList = offers.map(o => {
     const myOvr = ovr();
     const canBeStarter = myOvr >= o.competitorOvr;
-    const statusTxt = canBeStarter ? '🟢 預計先發' : `🔴 預計替補 (需追趕 ${o.competitorOvr - myOvr} OVR)`;
+    const statusTxt = canBeStarter ? '🟢 預計先發' : `🔴 預計二軍 (需追趕 ${o.competitorOvr - myOvr} OVR)`;
 
     return {
       t: `✍️ 簽約 ${o.teamName}`,
@@ -3337,8 +3371,8 @@ function phaseYearEndTransfer() {
         S.money += Math.round(o.salary * 0.4);
         S.benchCompetitorOvr = o.competitorOvr;
         S.coachTrust = 60; // reset coach trust when joining new team
-        S.rosterStatus = canBeStarter ? 'STARTER' : 'SUB';
-        card('gold', '轉會簽約確立', `你正式加盟 <b class="hl">${o.teamName}</b>！職位：${canBeStarter ? '<b class="hl">先發選手</b>' : '<b class="warn">替補選手</b>'}`);
+        S.rosterStatus = canBeStarter ? 'STARTER' : 'ACADEMY';
+        card('gold', '轉會簽約確立', `你正式加盟 <b class="hl">${o.teamName}</b>！職位：${canBeStarter ? '<b class="hl">一軍先發選手</b>' : '<b class="warn">二軍培訓選手</b>'}`);
         tlPush(`加盟 ${o.teamName}`);
 
         choose('年度結算', [
