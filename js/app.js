@@ -139,6 +139,38 @@ function ensureSeasonProperties() {
   }
 }
 
+function recordMatchStats(won, isManual, manualK = 0, manualD = 0, manualA = 0) {
+  if (!S) return { k: 0, d: 0, a: 0, pog: false };
+  if (!S.currentSplitStats) {
+    S.currentSplitStats = { matchesPlayed: 0, matchesWon: 0, kills: 0, deaths: 0, assists: 0, pogCount: 0 };
+  }
+  
+  let k = 0, d = 0, a = 0, pog = false;
+  if (isManual) {
+    k = manualK;
+    d = manualD;
+    a = manualA;
+    pog = won && (k >= 6 || a >= 10 || ovr() >= 68);
+  } else {
+    k = rng.range(4, 15);
+    d = rng.range(2, 9);
+    a = rng.range(8, 25);
+    pog = won && (rng.next() < (ovr() / 120));
+  }
+  
+  S.stats.kills += k;
+  S.stats.deaths += d;
+  S.stats.assists += a;
+  if (pog) S.stats.pogCount += 1;
+  
+  S.currentSplitStats.kills += k;
+  S.currentSplitStats.deaths += d;
+  S.currentSplitStats.assists += a;
+  if (pog) S.currentSplitStats.pogCount += 1;
+  
+  return { k, d, a, pog };
+}
+
 // ==================== 核心輔助計算 ====================
 function ovr() {
   if (!S) return 50;
@@ -996,12 +1028,11 @@ function run7PhaseMatch(oppTeam, chosenChampId, onMatchDone) {
       kills += rng.range(2, 6);
       deaths += rng.range(1, 3);
       assists += rng.range(4, 9);
-      S.stats.kills += kills;
-      S.stats.deaths += deaths;
-      S.stats.assists += assists;
-
-      const isPog = won && (kills >= 6 || assists >= 10 || ovr() >= 68);
-      if (isPog) S.stats.pogCount += 1;
+      
+      const { pog: isPog } = recordMatchStats(won, true, kills, deaths, assists);
+      if (!S.currentSplitStats) S.currentSplitStats = { matchesPlayed: 0, matchesWon: 0, kills: 0, deaths: 0, assists: 0, pogCount: 0 };
+      S.currentSplitStats.matchesPlayed += 1;
+      if (won) S.currentSplitStats.matchesWon += 1;
 
       card(won ? 'gold' : 'bad', won ? '🏆 VICTORY 勝利！' : '💀 DEFEAT 戰敗', `
         面對 <b class="hl">${oppTeam.name}</b>，全隊以 <b class="${won ? 'up' : 'dn'}">${won ? '2:0 拿下系列賽' : '1:2 遺憾告負'}</b>！<br>
@@ -1305,6 +1336,9 @@ function runProSplit(splitKey, onSplitDone) {
   schedule.sort(() => scheduleRng.next() - 0.5);
 
   S.season = { standings, schedule, currentRound: 0, stage: 'REGULAR', midSplitEventTriggered: false };
+  
+  // Initialize current split stats
+  S.currentSplitStats = { matchesPlayed: 0, matchesWon: 0, kills: 0, deaths: 0, assists: 0, pogCount: 0 };
 
   function playSeasonStep() {
     board(1);
@@ -1429,22 +1463,33 @@ function runProSplit(splitKey, onSplitDone) {
                 while (season.currentRound < season.schedule.length) {
                   const curMatch = season.schedule[season.currentRound];
                   const curOpp = getTeamById(curMatch.oppTeamId);
-                  const playerOvr = ovr() + getTacticModifier();
-                  const won = rng.next() < (playerOvr / 100);
+                  
+                  const teamOvr = S.rosterStatus === 'STARTER' ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
+                  const won = rng.next() < (teamOvr / 100);
+                  
                   if (won) {
                     season.standings[S.teamId].wins++;
                     season.standings[curOpp.id].losses++;
                     curMatch.won = true;
                     S.stats.matchesPlayed += 3;
                     S.stats.matchesWon += 2;
+                    S.currentSplitStats.matchesPlayed += 3;
+                    S.currentSplitStats.matchesWon += 2;
                   } else {
                     season.standings[S.teamId].losses++;
                     season.standings[curOpp.id].wins++;
                     curMatch.won = false;
                     S.stats.matchesPlayed += 3;
                     S.stats.matchesWon += 1;
+                    S.currentSplitStats.matchesPlayed += 3;
+                    S.currentSplitStats.matchesWon += 1;
                   }
                   curMatch.isFinished = true;
+                  
+                  if (S.rosterStatus === 'STARTER') {
+                    recordMatchStats(won, false);
+                  }
+                  
                   simulateOtherTeams(curOpp.id);
                   season.currentRound++;
                 }
@@ -1522,10 +1567,10 @@ function runProSplit(splitKey, onSplitDone) {
             if (!isPlayerStarter) {
               card('bad', '無法上場', '您目前是替補，教練派上了首發隊友打完這局生死戰。');
               const won = rng.next() < (S.benchCompetitorOvr / 105);
-              resolvePlayoffsSemi(won);
+              resolvePlayoffsSemi(won, false);
               return;
             }
-            interactiveBPDraft(opp, meta, (won) => { resolvePlayoffsSemi(won); });
+            interactiveBPDraft(opp, meta, (won) => { resolvePlayoffsSemi(won, true); });
           }
         },
         {
@@ -1534,10 +1579,11 @@ function runProSplit(splitKey, onSplitDone) {
           f: () => {
             const teamOvr = isPlayerStarter ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
             const won = rng.next() < (teamOvr / 105);
-            resolvePlayoffsSemi(won);
+            resolvePlayoffsSemi(won, false);
           }
         }
       ]);
+      
     } else if (season.stage === 'PLAYOFFS_FINAL') {
       const opp = getPlayoffsOpponent('FINAL');
       if (!opp) { proceedToSplitSettlement(splitKey, splitInfo, true, onSplitDone); return; }
@@ -1552,10 +1598,10 @@ function runProSplit(splitKey, onSplitDone) {
             if (!isPlayerStarter) {
               card('bad', '無法上場', '您目前是替補，只能在台下為決賽的先發隊友鼓掌。');
               const won = rng.next() < (S.benchCompetitorOvr / 110);
-              resolvePlayoffsFinal(won);
+              resolvePlayoffsFinal(won, false);
               return;
             }
-            interactiveBPDraft(opp, meta, (won) => { resolvePlayoffsFinal(won); });
+            interactiveBPDraft(opp, meta, (won) => { resolvePlayoffsFinal(won, true); });
           }
         },
         {
@@ -1564,10 +1610,11 @@ function runProSplit(splitKey, onSplitDone) {
           f: () => {
             const teamOvr = isPlayerStarter ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
             const won = rng.next() < (teamOvr / 110);
-            resolvePlayoffsFinal(won);
+            resolvePlayoffsFinal(won, false);
           }
         }
       ]);
+      
     } else if (season.stage === 'INTERNATIONAL') {
       const intlOppId = region === 'LCK' ? 'BG' : 'AO';
       const intlOpp = getTeamById(intlOppId) || TEAMS[8];
@@ -1583,10 +1630,10 @@ function runProSplit(splitKey, onSplitDone) {
             if (!isPlayerStarter) {
               card('bad', '無法上場', '您目前在替補席觀戰，隊友代表出戰。');
               const won = rng.next() < (S.benchCompetitorOvr / 115);
-              resolveInternationalMatch(won, tourneyInfo);
+              resolveInternationalMatch(won, tourneyInfo, false);
               return;
             }
-            interactiveBPDraft(intlOpp, meta, (won) => { resolveInternationalMatch(won, tourneyInfo); });
+            interactiveBPDraft(intlOpp, meta, (won) => { resolveInternationalMatch(won, tourneyInfo, true); });
           }
         },
         {
@@ -1595,7 +1642,7 @@ function runProSplit(splitKey, onSplitDone) {
           f: () => {
             const teamOvr = isPlayerStarter ? (ovr() + getTacticModifier()) : S.benchCompetitorOvr;
             const won = rng.next() < (teamOvr / 115);
-            resolveInternationalMatch(won, tourneyInfo);
+            resolveInternationalMatch(won, tourneyInfo, false);
           }
         }
       ]);
@@ -1607,20 +1654,23 @@ function runProSplit(splitKey, onSplitDone) {
     const matchInfo = season.schedule[season.currentRound];
     const opp = getTeamById(matchInfo.oppTeamId);
     const won = rng.next() < (S.benchCompetitorOvr / 100);
+    
+    S.stats.matchesPlayed += 3;
+    S.stats.matchesWon += won ? 2 : 1;
+    S.currentSplitStats.matchesPlayed += 3;
+    S.currentSplitStats.matchesWon += won ? 2 : 1;
+    recordMatchStats(won, false);
+    
     if (won) {
       season.standings[S.teamId].wins++;
       season.standings[opp.id].losses++;
       matchInfo.won = true;
-      S.stats.matchesPlayed += 3;
-      S.stats.matchesWon += 2;
-      card('good', `第 ${season.currentRound + 1} 輪 賽賽戰報 (替補席)`, `先發隊友表現穩健，以 <b class="up">2:0 擊敗了 ${opp.name}</b>！`);
+      card('good', `第 ${season.currentRound + 1} 輪 賽事戰報 (替補席)`, `先發隊友表現穩健，以 <b class="up">2:0 擊敗了 ${opp.name}</b>！`);
     } else {
       season.standings[S.teamId].losses++;
       season.standings[opp.id].wins++;
       matchInfo.won = false;
-      S.stats.matchesPlayed += 3;
-      S.stats.matchesWon += 1;
-      card('bad', `第 ${season.currentRound + 1} 輪 賽賽戰報 (替補席)`, `戰隊不幸失利，以 <b class="dn">1:2 負於 ${opp.name}</b>。`);
+      card('bad', `第 ${season.currentRound + 1} 輪 賽事戰報 (替補席)`, `戰隊不幸失利，以 <b class="dn">1:2 負於 ${opp.name}</b>。`);
     }
     matchInfo.isFinished = true;
     simulateOtherTeams(opp.id);
@@ -1666,19 +1716,32 @@ function runProSplit(splitKey, onSplitDone) {
     const season = S.season;
     const matchInfo = season.schedule[season.currentRound];
     const opp = getTeamById(matchInfo.oppTeamId);
+    
+    const wasManual = S.currentSplitStats.matchesPlayed > season.currentRound;
+    
+    if (wasManual) {
+      S.stats.matchesPlayed += 2;
+      S.stats.matchesWon += won ? 1 : 1;
+      S.currentSplitStats.matchesPlayed += 2;
+      S.currentSplitStats.matchesWon += won ? 1 : 1;
+      recordMatchStats(won, false);
+    } else {
+      S.stats.matchesPlayed += 3;
+      S.stats.matchesWon += won ? 2 : 1;
+      S.currentSplitStats.matchesPlayed += 3;
+      S.currentSplitStats.matchesWon += won ? 2 : 1;
+      recordMatchStats(won, false);
+    }
+    
     if (won) {
       season.standings[S.teamId].wins++;
       season.standings[opp.id].losses++;
       matchInfo.won = true;
-      S.stats.matchesPlayed += 3;
-      S.stats.matchesWon += 2;
       card('good', `第 ${season.currentRound + 1} 輪 常規賽戰報`, `你成功率領隊伍以 <b class="up">2:0 橫掃 ${opp.name}</b>！`);
     } else {
       season.standings[S.teamId].losses++;
       season.standings[opp.id].wins++;
       matchInfo.won = false;
-      S.stats.matchesPlayed += 3;
-      S.stats.matchesWon += 1;
       card('bad', `第 ${season.currentRound + 1} 輪 常規賽戰報`, `隊伍配合出現失誤，以 <b class="dn">1:2 憾負 ${opp.name}</b>。`);
     }
     matchInfo.isFinished = true;
@@ -1759,8 +1822,26 @@ function runProSplit(splitKey, onSplitDone) {
     return null;
   }
 
-  function resolvePlayoffsSemi(won) {
+  function resolvePlayoffsSemi(won, wasManual) {
     const season = S.season;
+    const isPlayerStarter = S.rosterStatus === 'STARTER';
+    
+    if (isPlayerStarter) {
+      if (wasManual) {
+        S.stats.matchesPlayed += 4;
+        S.stats.matchesWon += won ? 2 : 2;
+        S.currentSplitStats.matchesPlayed += 4;
+        S.currentSplitStats.matchesWon += won ? 2 : 2;
+        recordMatchStats(won, false);
+      } else {
+        S.stats.matchesPlayed += 5;
+        S.stats.matchesWon += won ? 3 : 2;
+        S.currentSplitStats.matchesPlayed += 5;
+        S.currentSplitStats.matchesWon += won ? 3 : 2;
+        recordMatchStats(won, false);
+      }
+    }
+    
     if (won) {
       card('gold', '🏆 挺進總決賽！', '隊伍在準決賽 BO5 大獲全勝！成功擊敗對手，晉級 LCP 總決賽，我們距離冠軍只差一步之遙！');
       season.stage = 'PLAYOFFS_FINAL';
@@ -1772,8 +1853,26 @@ function runProSplit(splitKey, onSplitDone) {
     }
   }
 
-  function resolvePlayoffsFinal(won) {
+  function resolvePlayoffsFinal(won, wasManual) {
     const season = S.season;
+    const isPlayerStarter = S.rosterStatus === 'STARTER';
+    
+    if (isPlayerStarter) {
+      if (wasManual) {
+        S.stats.matchesPlayed += 4;
+        S.stats.matchesWon += won ? 2 : 2;
+        S.currentSplitStats.matchesPlayed += 4;
+        S.currentSplitStats.matchesWon += won ? 2 : 2;
+        recordMatchStats(won, false);
+      } else {
+        S.stats.matchesPlayed += 5;
+        S.stats.matchesWon += won ? 3 : 2;
+        S.currentSplitStats.matchesPlayed += 5;
+        S.currentSplitStats.matchesWon += won ? 3 : 2;
+        recordMatchStats(won, false);
+      }
+    }
+    
     if (won) {
       S.stats.titlesWon += 1;
       S.popularity += 25;
@@ -1794,7 +1893,25 @@ function runProSplit(splitKey, onSplitDone) {
     }
   }
 
-  function resolveInternationalMatch(won, tourneyInfo) {
+  function resolveInternationalMatch(won, tourneyInfo, wasManual) {
+    const isPlayerStarter = S.rosterStatus === 'STARTER';
+    
+    if (isPlayerStarter) {
+      if (wasManual) {
+        S.stats.matchesPlayed += 4;
+        S.stats.matchesWon += won ? 2 : 2;
+        S.currentSplitStats.matchesPlayed += 4;
+        S.currentSplitStats.matchesWon += won ? 2 : 2;
+        recordMatchStats(won, false);
+      } else {
+        S.stats.matchesPlayed += 5;
+        S.stats.matchesWon += won ? 3 : 2;
+        S.currentSplitStats.matchesPlayed += 5;
+        S.currentSplitStats.matchesWon += won ? 3 : 2;
+        recordMatchStats(won, false);
+      }
+    }
+    
     if (won) {
       S.stats.intlTitles += 1;
       if (tourneyInfo.id === 'WORLDS') {
@@ -1816,10 +1933,36 @@ function runProSplit(splitKey, onSplitDone) {
   function proceedToSplitSettlement(splitKey, splitInfo, wonChamp, onSplitDone) {
     S.fatigue = Math.min(100, S.fatigue + 15);
     S.stress = Math.max(0, S.stress - 10);
+    
+    // Display Split stats card
+    showSplitStatsCard(splitInfo.name);
+    
+    // Save current split stats to splitHistory
+    S.splitHistory = S.splitHistory || [];
+    S.splitHistory.push({
+      year: S.year,
+      splitKey: splitKey,
+      splitName: splitInfo.name,
+      ...S.currentSplitStats
+    });
+    
     if (wonChamp) tlPush(`${splitInfo.shortName} 冠軍 🏆`);
     else if (S.season.stage === 'PLAYOFFS_FINAL') tlPush(`${splitInfo.shortName} 亞軍`);
     else tlPush(`${splitInfo.shortName} 完畢`);
     choose(`${splitInfo.name} 完畢`, [{ t: '繼續推進賽程 ▸', main: true, f: onSplitDone }]);
+  }
+
+  function showSplitStatsCard(splitName) {
+    const st = S.currentSplitStats;
+    if (!st) return;
+    const winRate = st.matchesPlayed > 0 ? ((st.matchesWon / st.matchesPlayed) * 100).toFixed(0) : 0;
+    const kda = st.deaths > 0 ? ((st.kills + st.assists) / st.deaths).toFixed(2) : (st.kills + st.assists).toFixed(2);
+    
+    card('gold', `📊 ${splitName} 個人數據結算`, `
+      <b>系列賽戰績</b>：${st.matchesWon} 勝 / ${st.matchesPlayed - st.matchesWon} 敗 (勝率 ${winRate}%)<br>
+      <b>個人 KDA</b>：${st.kills} 殺 / ${st.deaths} 死 / ${st.assists} 助攻 (KDA: <b class="hl">${kda}</b>)<br>
+      <b>單場 MVP (POG) 次數</b>：<b class="hl">${st.pogCount} 次</b>
+    `);
   }
 }
 
@@ -1827,6 +1970,47 @@ function runProSplit(splitKey, onSplitDone) {
 function phaseYearEndTransfer() {
   board(2);
   divider(`${S.year} · 年度轉會市場窗口`);
+
+  // Render Year-End Statistics Report
+  const yearSplits = (S.splitHistory || []).filter(h => h.year === S.year);
+  if (yearSplits.length > 0) {
+    let splitsHtml = yearSplits.map(st => {
+      const winRate = st.matchesPlayed > 0 ? ((st.matchesWon / st.matchesPlayed) * 100).toFixed(0) : 0;
+      const kda = st.deaths > 0 ? ((st.kills + st.assists) / st.deaths).toFixed(2) : (st.kills + st.assists).toFixed(2);
+      return `
+        <div style="margin-bottom:8px; padding:6px; background:rgba(255,255,255,0.05); border:1px solid var(--edge); border-radius:4px;">
+          <strong>${st.splitName}</strong>：${st.matchesWon} 勝 / ${st.matchesPlayed - st.matchesWon} 敗 (勝率 ${winRate}%)<br>
+          KDA: <b class="hl">${kda}</b> | POG MVP: <b class="hl">${st.pogCount} 次</b>
+        </div>
+      `;
+    }).join('');
+    
+    let yrPlayed = 0, yrWon = 0, yrK = 0, yrD = 0, yrA = 0, yrPog = 0;
+    yearSplits.forEach(st => {
+      yrPlayed += st.matchesPlayed;
+      yrWon += st.matchesWon;
+      yrK += st.kills;
+      yrD += st.deaths;
+      yrA += st.assists;
+      yrPog += st.pogCount;
+    });
+    
+    const yrWinRate = yrPlayed > 0 ? ((yrWon / yrPlayed) * 100).toFixed(0) : 0;
+    const yrKda = yrD > 0 ? ((yrK + yrA) / yrD).toFixed(2) : (yrK + yrA).toFixed(2);
+    
+    card('gold', `🏆 ${S.year} 年度生涯總結算報告`, `
+      <div style="font-size:12.5px; line-height: 1.5;">
+        <span style="color:var(--accent); font-weight:bold;">各賽季明細：</span>
+        ${splitsHtml}
+        <hr style="border:0; border-top:1px solid var(--edge); margin:8px 0;">
+        <span style="color:var(--gold); font-weight:bold;">📈 ${S.year} 全年度總計：</span><br>
+        • 總戰績：<b class="hl">${yrWon} 勝 / ${yrPlayed - yrWon} 敗</b> (勝率 ${yrWinRate}%)<br>
+        • 總參賽局數：${yrPlayed} 局<br>
+        • 總 KDA：${yrK} / ${yrD} / ${yrA} (平均 KDA: <b class="hl">${yrKda}</b>)<br>
+        • 全年 MVP (POG) 次數：<b class="hl">${yrPog} 次</b>
+      </div>
+    `);
+  }
 
   const pOvr = ovr();
   const offers = [];
